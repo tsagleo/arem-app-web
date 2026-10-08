@@ -2465,7 +2465,22 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // Rien n'est supprimé : une association qui repasse en Premium
   // retrouve immédiatement ses données existantes.
   const isPremiumPlan = subscription?.plan === "premium";
-  const PREMIUM_FEATURE_IDS = ["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
+  // Tirage au sort en direct (Tirages.jsx, 2026-10-08) : un bandeau
+  // s'affiche sur toutes les pages pour inviter chacun à rejoindre la
+  // scène. Mis à jour en temps réel (même table que la rubrique).
+  const [tirageEnDirect, setTirageEnDirect] = useState(null);
+  useEffect(() => {
+    if (!isPremiumPlan || !profile.association_id) return;
+    const chercher = () => supabase.from("tirages").select("id, titre").eq("association_id", profile.association_id)
+      .eq("statut", "en_cours").order("lance_le", { ascending: false }).limit(1).maybeSingle()
+      .then(({ data }) => setTirageEnDirect(data || null));
+    chercher();
+    const channel = supabase.channel(`tirages-bandeau-${profile.association_id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "tirages", filter: `association_id=eq.${profile.association_id}` }, chercher)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isPremiumPlan, profile.association_id]);
+  const PREMIUM_FEATURE_IDS =["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
   // Bouton « Passer à Premium » des écrans verrouillés : bascule sur
   // Configuration (où vit la carte « Votre forfait ») puis y fait défiler
   // la page — fonctionne qu'on parte d'un autre onglet ou qu'on soit déjà
@@ -4465,6 +4480,12 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
           </div>
         </Container>
       </div>
+
+      {tirageEnDirect && tab !== "tirages" && (!isBureau || canSeeBureauModule("tirages")) && (
+        <button onClick={() => setTab("tirages")} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, width: "100%", background: RED, color: "white", border: "none", padding: "10px 16px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+          <Dices size={16} /> {t("draw_live_banner").replace("{titre}", tirageEnDirect.titre)}
+        </button>
+      )}
 
       {/* ================= VUE D'ENSEMBLE (page d'accueil) ================= */}
       {tab === "apercu" && (
@@ -6710,7 +6731,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
           : <Container><Section><PremiumLocked label={t("nav_polls")} onUpgrade={goToForfait} features={[t("premium_feat_sondages_1"), t("premium_feat_sondages_2"), t("premium_feat_sondages_3")]} /></Section></Container>
       )}
       {tab === "tirages" && (isBureau || isResponsable || isAdherent) && (
-        isPremiumPlan ? <Tirages profile={profile} isBureau={isBureau} />
+        isPremiumPlan ? <Tirages profile={profile} isBureau={isBureau} association={association} />
           : <Container><Section><PremiumLocked label={t("nav_draws")} onUpgrade={goToForfait} features={[t("premium_feat_tirages_1"), t("premium_feat_tirages_2"), t("premium_feat_tirages_3")]} /></Section></Container>
       )}
       {tab === "funeraire" && (isBureau || isResponsable || isAdherent) && (
