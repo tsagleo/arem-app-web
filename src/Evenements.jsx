@@ -4,8 +4,8 @@
 // =====================================================================
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  CalendarDays, Plus, Users, Pencil, Trash2, X, Video, Download, Star, MessageCircle, CreditCard, Eye, ChevronDown,
-  QrCode, ScanLine, Car, HeartHandshake, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search,
+  CalendarDays, Plus, Pencil, Trash2, X, Video, Download, Star, MessageCircle, CreditCard, Eye, ChevronDown,
+  QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
@@ -352,7 +352,6 @@ export default function Evenements({ profile, isBureau, association }) {
   // confidentialité : le Bureau (is_staff()) reçoit tout, l'adhérent ne
   // reçoit que les siennes.
   const [eventPayments, setEventPayments] = useState([]);
-  const [financeEventId, setFinanceEventId] = useState(null);
   // ---------- Modernisation Événements (2026-09-30) : état des nouveaux
   // blocs — voir sql/2026-09-30_evenements_modernisation.sql. Chaque
   // requête de chargement ci-dessous est tolérante (liste vide en cas
@@ -365,7 +364,6 @@ export default function Evenements({ profile, isBureau, association }) {
   const [carpoolRequests, setCarpoolRequests] = useState([]);
   const [refundQueue, setRefundQueue] = useState([]);
   const [publicRegistrations, setPublicRegistrations] = useState([]);
-  const [expandedPublicRegsId, setExpandedPublicRegsId] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   // ---------- Réaménagement Événements (2026-09-30) : liste compacte +
@@ -382,16 +380,12 @@ export default function Evenements({ profile, isBureau, association }) {
   // réforme de design que la liste/fiche — plus compact au repos, en
   // grille à l'ouverture plutôt qu'empilé sur toute la hauteur de page.
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [scanningEventId, setScanningEventId] = useState(null);
   const [scanResult, setScanResult] = useState(null);
   const [manualToken, setManualToken] = useState("");
   const [ticketEventId, setTicketEventId] = useState(null);
   const [linkCopiedId, setLinkCopiedId] = useState(null);
-  const [expandedSessionsId, setExpandedSessionsId] = useState(null);
   const [newSession, setNewSession] = useState({ titre: "", date_debut: "", date_fin: "", lieu: "", description: "" });
-  const [expandedVolunteerId, setExpandedVolunteerId] = useState(null);
   const [newVolunteerTask, setNewVolunteerTask] = useState({ titre: "", description: "", membres_requis: 1 });
-  const [expandedCarpoolId, setExpandedCarpoolId] = useState(null);
   const [newCarpoolOffer, setNewCarpoolOffer] = useState({ places_disponibles: 1, point_depart: "", heure_depart: "", notes: "" });
   const [newCarpoolRequest, setNewCarpoolRequest] = useState({ notes: "" });
   const [loading, setLoading] = useState(true);
@@ -610,7 +604,7 @@ export default function Evenements({ profile, isBureau, association }) {
       if (uploadErr) throw uploadErr;
       const { data, error } = await supabase.from("interac_payment_claims").insert({
         association_id: profile.association_id, member_id: profile.member_id, type: "billet_evenement",
-        montant: ev.prix, fichier_path: path, fichier_nom: interacFile.name, event_id: ev.id,
+        montant: effectiveMemberPrice(ev), fichier_path: path, fichier_nom: interacFile.name, event_id: ev.id,
       }).select().single();
       if (error) throw error;
       setClaims((prev) => [data, ...prev]);
@@ -916,7 +910,7 @@ export default function Evenements({ profile, isBureau, association }) {
         nbReviews: eventReviews(ev.id).length, volunteerCount: eventVolunteerTasks(ev.id).reduce((s, vt) => s + taskSignups(vt.id).length, 0), devise,
       });
       doc.save(`${(ev.titre || "evenement").replace(/[^a-z0-9]+/gi, "_")}_bilan.pdf`);
-    } catch (e) {
+    } catch {
       alert(t("rap_missing_deps"));
     }
   }
@@ -1189,7 +1183,7 @@ export default function Evenements({ profile, isBureau, association }) {
                 )}
               </div>
 
-              {profile.role === "adherent" && ev.prix > 0 && mine?.statut !== "confirme" ? (
+              {profile.role === "adherent" && effectiveMemberPrice(ev) > 0 && mine?.statut !== "confirme" ? (
                 (() => {
                   const pending = myPendingEventClaim(ev.id);
                   if (pending) {
@@ -1213,7 +1207,7 @@ export default function Evenements({ profile, isBureau, association }) {
                       </div>
                       {interacPanelId === ev.id && (
                         <Card style={{ padding: 14 }}>
-                          <p style={{ fontSize: 12, color: "#5B6270", margin: "0 0 8px" }}>{t("ev_interac_help").replace("{montant}", money(ev.prix, devise))}</p>
+                          <p style={{ fontSize: 12, color: "#5B6270", margin: "0 0 8px" }}>{t("ev_interac_help").replace("{montant}", money(effectiveMemberPrice(ev), devise))}</p>
                           <input type="file" accept="image/*,.pdf" onChange={(e) => setInteracFile(e.target.files?.[0] || null)} style={{ fontSize: 12, marginBottom: 8, display: "block" }} />
                           <Btn onClick={() => submitEventInteracProof(ev)} disabled={!interacFile || interacUploading}>{interacUploading ? t("ms_pay_online_loading") : t("ev_interac_submit_btn")}</Btn>
                         </Card>
