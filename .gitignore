@@ -29,3 +29,8 @@ supabase/.temp/
 # Secrets locaux
 .env
 .env.local
+
+# Copies/sauvegardes locales, pas la version utilisee par l'application
+Claude outputs/
+src/App-1.jsx
+src/shared-1.jsx
