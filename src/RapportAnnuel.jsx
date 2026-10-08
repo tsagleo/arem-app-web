@@ -32,7 +32,7 @@
 // d'ouverture), donc les trois états produits ici sont exacts.
 import React, { useState } from "react";
 import { supabase } from "./supabaseClient";
-import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBounds } from "./shared";
+import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBounds, toDatetimeLocal } from "./shared";
 
 // Toutes les tables propres à une association, pour l'export complet.
 // « associations » elle-même est traitée à part (filtrée par id, pas par
@@ -218,7 +218,7 @@ async function buildPdf({ t, association, year, devise, finances, gouvernance, a
   h2(t("rap_act_events").replace("{year}", String(year)));
   if (activites.events.length > 0) {
     table([t("rap_col_event"), t("rap_col_date"), t("rap_col_place"), t("rap_col_confirmed")],
-      activites.events.map((ev) => [ev.titre, (ev.date_debut || "").slice(0, 10), ev.lieu || "—", String(ev.confirmes)]));
+      activites.events.map((ev) => [ev.titre, toDatetimeLocal(ev.date_debut).slice(0, 10), ev.lieu || "—", String(ev.confirmes)]));
   } else para(t("rap_act_events_none"));
   h2(t("rap_act_projects"));
   if (activites.projects.length > 0) {
@@ -459,7 +459,7 @@ export default function RapportAnnuel({ profile, association, isPresident }) {
       });
 
       // ---------- Activités ----------
-      const eventsAnnee = (events || []).filter((ev) => inYear((ev.date_debut || "").slice(0, 10)));
+      const eventsAnnee = (events || []).filter((ev) => inYear(toDatetimeLocal(ev.date_debut).slice(0, 10)));
       const eventsWithCounts = eventsAnnee.map((ev) => ({
         ...ev,
         confirmes: (eventRsvps || []).filter((r) => r.event_id === ev.id && r.statut === "confirme").length,

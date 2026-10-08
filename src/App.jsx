@@ -9,7 +9,7 @@ import {
   Globe, Layers, Car, Video, Briefcase,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, pushSupported, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES } from "./shared";
+import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, pushSupported, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
 import { useUnreadCounts } from "./useUnreadCounts";
 import PresentationAssociation from "./PresentationAssociation";
 import PublicShowcase from "./PublicShowcase.jsx";
@@ -4393,7 +4393,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
                       {searchResults.events.length > 0 && (
                         <SearchGroup label={t("nav_events")}>
                           {searchResults.events.map((e) => (
-                            <SearchResultRow key={e.id} icon={CalendarDays} title={e.titre} subtitle={[e.lieu, e.date_debut ? e.date_debut.slice(0, 10) : null].filter(Boolean).join(" · ")} onClick={() => goToSearchTab("evenements")} />
+                            <SearchResultRow key={e.id} icon={CalendarDays} title={e.titre} subtitle={[e.lieu, e.date_debut ? toDatetimeLocal(e.date_debut).slice(0, 10) : null].filter(Boolean).join(" · ")} onClick={() => goToSearchTab("evenements")} />
                           ))}
                         </SearchGroup>
                       )}
