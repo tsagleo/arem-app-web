@@ -32,7 +32,7 @@ const ROLE_KEY_MAP = {
 const BUREAU_CONFIGURABLE_MODULES = [
   "membres", "inscription", "tontine", "collation", "urgence", "secours",
   "finances", "paiements_interac", "gouvernance", "vieassociative", "presences",
-  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages",
+  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages",
   "funeraire", "sanctions", "dons", "emprunts", "documents", "annonces",
   "journal", "demandes_suppression", "acces", "config",
 ];
@@ -42,7 +42,7 @@ const BUREAU_MODULE_LABEL_KEYS = {
   finances: "nav_finances", paiements_interac: "nav_interac", gouvernance: "nav_governance",
   vieassociative: "nav_community", presences: "nav_presences", projets: "nav_projects",
   evenements: "nav_events", covoiturage: "nav_carpool", reunions: "nav_meetings",
-  emploi: "nav_jobs", sondages: "nav_polls", funeraire: "nav_funeraire",
+  emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", funeraire: "nav_funeraire",
   sanctions: "nav_sanctions", dons: "nav_donations", emprunts: "nav_loans",
   documents: "nav_documents", annonces: "nav_announcements", journal: "nav_activity",
   demandes_suppression: "nav_del_requests", acces: "nav_access", config: "nav_config",
