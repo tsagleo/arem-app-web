@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { Vote, Users2, Landmark, Printer, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import {
-  Section, Container, Card, Btn, Field, Table, td, RuleBox, Banner, inputStyle, useLang, RED, SignatureLine, friendlyError, OrgLegalSubline, datetimeLocalToISO,
+  Section, Container, Card, Btn, Field, Table, td, RuleBox, Banner, inputStyle, useLang, RED, SignatureLine, friendlyError, OrgLegalSubline, datetimeLocalToISO, formatEventDateTime,
 } from "./shared";
 
 export default function Gouvernance({ profile, isBureau, association }) {
@@ -247,7 +247,7 @@ export default function Gouvernance({ profile, isBureau, association }) {
               </div>
             </div>
             <p style={{ fontSize: 12.5, color: "#5B6270" }}>{el.description}</p>
-            <RuleBox>{t("gov_from")} {new Date(el.date_debut).toLocaleString("fr-CA")} {t("gov_to")} {new Date(el.date_fin).toLocaleString("fr-CA")}</RuleBox>
+            <RuleBox>{t("gov_from")} {formatEventDateTime(el.date_debut, lang)} {t("gov_to")} {formatEventDateTime(el.date_fin, lang)}</RuleBox>
 
             <div style={{ marginBottom: 12 }}>
               <Btn variant="outline" onClick={() => setPvElectionId(el.id)} style={{ padding: "5px 12px", fontSize: 12 }}>
@@ -351,7 +351,7 @@ function ElectionPVModal({ election, candidats, votes, members, association, eff
         <h4 style={{ fontSize: 15, marginBottom: 4 }}>{election.titre}</h4>
         {election.description && <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 8 }}>{election.description}</p>}
         <RuleBox>
-          {t("gov_from")} {new Date(election.date_debut).toLocaleString("fr-CA")} {t("gov_to")} {new Date(election.date_fin).toLocaleString("fr-CA")}
+          {t("gov_from")} {formatEventDateTime(election.date_debut, lang)} {t("gov_to")} {formatEventDateTime(election.date_fin, lang)}
           <br />{t("gov_pv_status")} : <b>{effectiveStatutLabel}</b>
         </RuleBox>
 
