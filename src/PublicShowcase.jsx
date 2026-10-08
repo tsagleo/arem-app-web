@@ -15,7 +15,7 @@
 // verify_member_card), qui ne projettent que des colonnes sûres — voir
 // ce script pour le détail de ce choix de sécurité.
 // =====================================================================
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED, formatEventDateTime } from "./shared";

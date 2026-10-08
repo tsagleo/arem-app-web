@@ -5,11 +5,10 @@
 // automatiquement à partir des chiffres courants de l'association.
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { useState } from "react";
+import { useState } from "react";
 import { TrendingUp, TrendingDown, CheckCircle2, AlertTriangle } from "lucide-react";
 import { Card, StatCard, TEAL, TEAL_LIGHT, RED } from "./shared";
 
-const AMBER = "#8A5A00";
 // Palette catégorielle validée (contraste + daltonisme), ordre fixe — jamais recyclée par rang.
 const CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
 

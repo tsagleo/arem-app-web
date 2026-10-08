@@ -3,7 +3,7 @@
 // communs à tous les modules de la plateforme.
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect } from "react";
 import { MessageCircle } from "lucide-react";
 
 // Palette « Saphir profond & or antique » (harmonisation du 2026-10-06 —
@@ -140,7 +140,7 @@ function deviseEnMotsFr(montant, code) {
     const parts = new Intl.NumberFormat("fr-FR", { style: "currency", currency: (code || "EUR").toUpperCase(), currencyDisplay: "name" }).formatToParts(Math.abs(montant) || 0);
     const part = parts.find((p) => p.type === "currency");
     return part ? part.value : code;
-  } catch (e) { return code || ""; }
+  } catch { return code || ""; }
 }
 export function montantEnLettres(montant, devise) {
   const v = Number(montant) || 0;
@@ -255,7 +255,7 @@ export function currencyOptions(lang) {
   }
   return codes
     .map((code) => {
-      let name = null;
+      let name;
       try { name = names ? names.of(code) : null; } catch { name = null; }
       return { code, label: name ? `${code} — ${name}` : code };
     })
@@ -5392,7 +5392,7 @@ export function LangProvider({ children }) {
   const dir = RTL_LANGS.includes(lang) ? "rtl" : "ltr";
   function changeLang(l) {
     setLang(l);
-    try { localStorage.setItem("app_lang", l); } catch (e) { /* stockage indisponible, ignorer */ }
+    try { localStorage.setItem("app_lang", l); } catch { /* stockage indisponible, ignorer */ }
   }
   // Applique la langue et la direction au document entier (<html lang=""
   // dir="">) — nécessaire pour que le navigateur applique réellement la
@@ -5402,7 +5402,7 @@ export function LangProvider({ children }) {
     try {
       document.documentElement.lang = lang;
       document.documentElement.dir = dir;
-    } catch (e) { /* environnement sans document (SSR/tests), ignorer */ }
+    } catch { /* environnement sans document (SSR/tests), ignorer */ }
   }, [lang, dir]);
   const t = (key) => DICTIONARY[lang]?.[key] || DICTIONARY.fr[key] || key;
   return <LangContext.Provider value={{ lang, setLang: changeLang, t, dir }}>{children}</LangContext.Provider>;
@@ -5448,18 +5448,18 @@ export function TextSizeProvider({ children }) {
     try {
       const stored = Number(localStorage.getItem("app_text_scale_index"));
       return Number.isInteger(stored) && stored >= 0 && stored < TEXT_SCALE_STEPS.length ? stored : TEXT_SCALE_DEFAULT_INDEX;
-    } catch (e) { return TEXT_SCALE_DEFAULT_INDEX; }
+    } catch { return TEXT_SCALE_DEFAULT_INDEX; }
   });
   const scale = TEXT_SCALE_STEPS[stepIndex];
   useEffect(() => {
     try {
       document.documentElement.style.setProperty("--app-text-scale", String(scale));
-    } catch (e) { /* environnement sans document (SSR/tests), ignorer */ }
+    } catch { /* environnement sans document (SSR/tests), ignorer */ }
   }, [scale]);
   function setIndex(i) {
     const clamped = Math.max(0, Math.min(TEXT_SCALE_STEPS.length - 1, i));
     setStepIndex(clamped);
-    try { localStorage.setItem("app_text_scale_index", String(clamped)); } catch (e) { /* stockage indisponible, ignorer */ }
+    try { localStorage.setItem("app_text_scale_index", String(clamped)); } catch { /* stockage indisponible, ignorer */ }
   }
   const value = {
     scale,

@@ -4,11 +4,11 @@
 // enregistrés et les prêts/remboursements, à partir de activity_log.
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { History } from "lucide-react";
 import { Card, Table, td } from "./shared";
 
-function normalizeEntry(log, { members, depenseFondsMap, t, moneyF }) {
+function normalizeEntry(log, { members, depenseFondsMap, t }) {
   const nouveau = log.details?.nouveau;
   const ancien = log.details?.ancien;
 

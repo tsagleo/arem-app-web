@@ -21,7 +21,7 @@
 // (nécessiterait une clé API payante à ce volume), voir en-tête du
 // script SQL pour le détail des simplifications assumées.
 // =====================================================================
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Car, Plus, Pencil, Trash2, MapPin, Calendar, Users, Repeat, Link2, Search, Send, Leaf, Calculator, Star, Check, X, Navigation, Phone, Mail, Sparkles, Map as MapIcon, Clock, Zap, Radio, Share2, AlertTriangle, Flag, Timer, Copy, ShieldCheck, Ban, MessageCircle, UserX, Globe, CalendarClock, Settings, FileText, FolderOpen } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -1580,7 +1580,7 @@ function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRa
 }
 
 // ---------- Propositions automatiques (dispatch) reçues par un conducteur ----------
-function DispatchProposalRow({ t, lang, round, offer, request, onRespond }) {
+function DispatchProposalRow({ t, lang, round, request, onRespond }) {
   return (
     <Card style={{ borderTopColor: TEAL }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, color: TEAL, marginBottom: 6 }}><Zap size={12} /> {t("cov_dispatch_proposals_title")}</div>
@@ -1765,7 +1765,7 @@ function AdministrationPanel({
 // Toutes les réservations (quel que soit le statut), filtrables, avec
 // adresses, temps d'attente/durée effective et signalements liés.
 // =====================================================================
-function RegistreCourses({ t, lang, devise, rows, bookingStatutOrder, buildDriverDossier }) {
+function RegistreCourses({ t, lang, rows, bookingStatutOrder, buildDriverDossier }) {
   const [statutFilter, setStatutFilter] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -1787,7 +1787,7 @@ function RegistreCourses({ t, lang, devise, rows, bookingStatutOrder, buildDrive
 
   async function exportPdf() {
     setExporting(true);
-    try { await exportRegistrePdf(filtered, t, lang, devise); }
+    try { await exportRegistrePdf(filtered, t, lang); }
     catch (e) { console.error("[Covoiturage registre PDF]", e); window.alert(t("cov_registre_pdf_failed")); }
     finally { setExporting(false); }
   }
@@ -1914,7 +1914,7 @@ function DriverDossierModal({ t, lang, dossier, onClose }) {
 
 // PDF à la demande du registre filtré (distinct du rapport annuel) — même
 // convention d'import dynamique que RapportAnnuel.jsx.
-async function exportRegistrePdf(rows, t, lang, devise) {
+async function exportRegistrePdf(rows, t, lang) {
   // Même convention que RapportAnnuel.jsx/buildPdf : jspdf-autotable v5
   // exporte une fonction autonome (autoTableMod.default), PAS une méthode
   // greffée sur doc — doc.autoTable(...) n'existe plus dans cette version

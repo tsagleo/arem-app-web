@@ -10,7 +10,7 @@
 // composant autonome, chargement de ses propres données, gestion
 // d'erreur par `alert(...)`.
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { BarChart3, Plus, Trash2, X, Lock, CheckCircle2, Clock } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, RED, TEAL, TEAL_LIGHT, CHARCOAL, friendlyError } from "./shared";

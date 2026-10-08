@@ -7,9 +7,9 @@
 // (la modification se fait toujours depuis Gouvernance/Configuration/
 // Adhérents, comme avant).
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ArrowRight, Landmark, Users2, Images, Settings, ChevronLeft, ChevronRight, ChevronDown, Sparkles, Palette, History, CalendarDays, CheckCircle2, Circle, PartyPopper, X, KeyRound } from "lucide-react";
+import { ArrowRight, Landmark, Users2, Images, Settings, ChevronLeft, ChevronRight, ChevronDown, Sparkles, Palette, History, CalendarDays, CheckCircle2, Circle, X, KeyRound } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, RuleBox, useLang, Table, td } from "./shared";
 

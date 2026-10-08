@@ -2,7 +2,7 @@
 // FinancesElargies.jsx — Dons, Emprunts, Budgets de projets
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Gift, Landmark, Plus, Printer, FileText, Pencil, Trash2, History } from "lucide-react";
 import { supabase } from "./supabaseClient";

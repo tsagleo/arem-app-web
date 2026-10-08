@@ -30,7 +30,7 @@
 //
 // Deux exports : Presences (onglet Bureau) et MyAttendanceHistory
 // (bloc en lecture seule inséré dans le "monespace" de App.jsx).
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, X, Search, Trash2, Download, Printer, CalendarDays, QrCode, CheckCircle2, XCircle, Clock, LogOut, History, Settings, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, foldText, Pill, TEAL, TEAL_LIGHT, RED, toDatetimeLocal, datetimeLocalToISO } from "./shared";

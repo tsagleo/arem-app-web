@@ -30,7 +30,7 @@
 // totaux cumulatifs non datés, impossibles à borner exactement à une
 // année — le grand livre, lui, date chaque écriture (y compris le bilan
 // d'ouverture), donc les trois états produits ici sont exacts.
-import React, { useState } from "react";
+import { useState } from "react";
 import { supabase } from "./supabaseClient";
 import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBounds, toDatetimeLocal } from "./shared";
 
@@ -273,7 +273,7 @@ async function buildPdf({ t, association, year, devise, finances, gouvernance, a
   doc.save(`rapport_annuel_${slugify(association?.nom)}_${year}.pdf`);
 }
 
-export default function RapportAnnuel({ profile, association, isPresident }) {
+export default function RapportAnnuel({ association, isPresident }) {
   const { t } = useLang();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
@@ -307,8 +307,8 @@ export default function RapportAnnuel({ profile, association, isPresident }) {
         { data: comptesCpt, error: eComptesCpt },
         { data: lignesEx, error: eLignesEx },
         { data: lignesOuv, error: eLignesOuv },
-        { data: carpoolBookings, error: eCarpoolBookings },
-        { data: carpoolIncidents, error: eCarpoolIncidents },
+        { data: carpoolBookings },
+        { data: carpoolIncidents },
       ] = await Promise.all([
         supabase.from("members").select("*"),
         supabase.from("board_members").select("*"),

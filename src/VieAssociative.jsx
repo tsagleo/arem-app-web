@@ -25,7 +25,6 @@ import {
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Table, td, inputStyle, useLang, friendlyError, foldText, RED, TEAL, toDatetimeLocal } from "./shared";
 
-const MONTH_NAMES = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 function initials(name) {
@@ -440,7 +439,6 @@ export default function VieAssociative({ profile, isBureau, onFeedOpened }) {
       } catch { /* stockage indisponible (navigation privée, quota...) : on ignore */ }
     }, 400);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newPost, draftKey]);
   const [newPostImage, setNewPostImage] = useState("");
   const [uploadingPostImage, setUploadingPostImage] = useState(false);

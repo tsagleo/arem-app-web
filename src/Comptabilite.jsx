@@ -39,7 +39,7 @@
 // sobres en noir et blanc) — cochable indépendamment (Bilan/Résultats/
 // Évolution), avec chargement automatique des données manquantes avant
 // d'imprimer. Voir claude/comptabilite-professionnelle-proposition.md.
-import React, { useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { Printer, Download } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Card, Btn, Field, useLang, friendlyError, inputStyle, Table, td, Banner, todayISO, exerciceBounds } from "./shared";
@@ -63,7 +63,7 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 function downloadCsv(rows, filename) {
-  // BOM (﻿) en tête : Excel (Windows et Mac) n'affiche correctement
+  // BOM (U+FEFF) en tête : Excel (Windows et Mac) n'affiche correctement
   // les accents français en UTF-8 que si ce repère est présent, sinon les
   // caractères comme « é »/« è » s'affichent corrompus à l'ouverture.
   const contenu = "﻿" + rows.map((r) => r.map(csvCell).join(",")).join("\r\n");

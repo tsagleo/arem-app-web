@@ -35,7 +35,7 @@
 //
 // Script SQL : sql/2026-09-21d_sanctions.sql.
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Gavel, Plus, X, Loader2, CreditCard, Upload, Search, Info, Clock, Wallet, ShieldCheck } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, RED, TEAL, TEAL_LIGHT, CHARCOAL, Table, td, money, todayISO, friendlyError } from "./shared";
@@ -87,7 +87,7 @@ function statusBadgeProps(statut) {
   return { color: AMBER, bg: AMBER_LIGHT, border: AMBER_BORDER };
 }
 
-export default function Sanctions({ profile, isBureau, isPresident, association }) {
+export default function Sanctions({ profile, isBureau, association }) {
   const { t } = useLang();
   const moneyF = (n) => money(n, association?.devise_monetaire);
   const paliersActifs = association?.sanctions_paliers_actifs !== false;

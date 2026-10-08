@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   Users, LayoutDashboard, HeartHandshake, FileBarChart, Plus, ShieldCheck,
@@ -9,7 +9,7 @@ import {
   Globe, Layers, Car, Video, Briefcase,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, pushSupported, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
+import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
 import { useUnreadCounts } from "./useUnreadCounts";
 import PresentationAssociation from "./PresentationAssociation";
 
@@ -86,21 +86,9 @@ const RED = "#C0392B";
 const AMBER = "#8A5A00";
 const CHARCOAL = "#182233";
 const BG = "#FBF6EC";
-const GOLD_LIGHT = "#E8CE7A";
 const EMERALD_DARK_DEFAULT = "#0D3A63";
 
-const ROLE_LABELS = {
-  super_admin: "Super-administrateur",
-  bureau_president: "Président(e)",
-  bureau_secretaire: "Secrétaire",
-  bureau_tresorier: "Trésorier(ère)",
-  responsable_rubrique: "Responsable de rubrique",
-  adherent: "Adhérent",
-};
-const RUBRIQUE_LABELS = {
-  inscription: "Inscription", tontine: "Cotisation", collation: "Collation (Présence)",
-  fonds_urgence: "Fonds d'urgence", fonds_secours: "Fonds de secours",
-};const ROLE_KEY_MAP = {
+const ROLE_KEY_MAP = {
   super_admin: "role_super_admin", bureau_president: "role_bureau_president",
   bureau_secretaire: "role_bureau_secretaire", bureau_tresorier: "role_bureau_tresorier",
   responsable_rubrique: "role_responsable_rubrique", adherent: "role_adherent",
@@ -224,7 +212,6 @@ function money(n, devise = "CAD") {
     return `${sign}${Math.abs(v).toLocaleString("fr-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${code}`;
   }
 }
-function uid() { return Math.random().toString(36).slice(2, 10); }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 // Accepte la virgule ET le point comme séparateur décimal — un
 // <input type="number"> HTML n'accepte QUE le point, et en refusant
@@ -763,7 +750,7 @@ function BlockedAccountScreen() {
 // pour que le bureau n'ait plus qu'à vérifier et valider dans Gestion des
 // accès, sans rien ressaisir (voir CompleteMemberModal, GestionAcces.jsx).
 // =====================================================================
-function CompleteJoinRequestForm({ pendingJoinData, defaultEmail, onSubmit, onCancel }) {
+function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
   const { t } = useLang();
   const [form, setForm] = useState({
     courriel: defaultEmail || "", telephone: "", sexe: "", dateNaissance: "", quartier: "",
@@ -1836,7 +1823,7 @@ function themeVarsFor(association) {
 // =====================================================================
 // PANNEAU SUPER-ADMINISTRATEUR
 // =====================================================================
-function SuperAdminPanel({ profile, onLogout }) {
+function SuperAdminPanel({ onLogout }) {
   const { t } = useLang();
   const [associations, setAssociations] = useState([]);
   const [subs, setSubs] = useState([]);
@@ -2371,7 +2358,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       navigator.clipboard.writeText(text);
       setInteracCopyMsg(t("ms_interac_copied"));
       setTimeout(() => setInteracCopyMsg(""), 2000);
-    } catch {}
+    } catch { /* presse-papiers indisponible : rien à signaler */ }
   }
 
   // Déclarée ici (et pas avec bureauProfiles/deletionRequests plus bas)
@@ -2648,7 +2635,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // Le montant configuré est "par séance" — le dû total suit donc le nombre de séances
   // suivies (12 par défaut en mensuel, sinon selon la fréquence choisie), exactement comme
   // pour la Cotisation.
-  function collationDu(memberId) { return periodKeys.length * COLLATION_MENSUEL; }
+  function collationDu() { return periodKeys.length * COLLATION_MENSUEL; }
   const collationTotalDu = members.reduce((s, m) => s + collationDu(m.id), 0);
   const collationTotalPaye = members.reduce((s, m) => s + collationTotalMois(m.id), 0);
 
@@ -2675,7 +2662,6 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // côté client pour la confirmation des virements Interac (suite 49).
   function nextUnpaidSeance(memberId) { return SEANCES.find((s) => tontineMontant(memberId, s) <= 0) ?? null; }
   function nextUnpaidMois(memberId) { return periodKeys.find((mo) => collationMontant(memberId, mo) <= 0) ?? null; }
-  function beneficiaryCount(memberId) { return seances.filter((s) => s.beneficiaire_id === memberId).length; }
   const tontineSeances = seances.filter((s) => (s.type || "tontine") === "tontine");
   const collationSeances = seances.filter((s) => s.type === "collation");
 
@@ -2890,7 +2876,6 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   const nbEligiblesSecours = activeMembers.filter((m) => estEligibleRecouvrementSecours(m, association)).length;
   const fuQuotePart = fuDraft.montant && nbActifs > 0 ? Number(fuDraft.montant) / nbActifs : 0;
   const fsQuotePart = fsDraft.montant && nbEligiblesSecours > 0 ? Number(fsDraft.montant) / nbEligiblesSecours : 0;
-  const [versementDrafts, setVersementDrafts] = useState({});
 
   // ---------- Approbation des suppressions (transactions financières) ----------
   // Si l'association a désigné un approbateur (Configuration) et que la
@@ -3071,18 +3056,6 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       setFsDepenses((prev) => prev.filter((d) => d.id !== depenseId));
       setFsRecouvrements((prev) => prev.filter((r) => r.depense_id !== depenseId));
     }
-  }
-
-  async function ajouterVersementFonds(fonds, memberId) {
-    const memberKey = fonds === "urgence" ? "fonds_urgence" : "fonds_secours";
-    if (!canEditRubrique(memberKey)) return;
-    const draftKey = fonds + "-" + memberId;
-    const montant = Number(versementDrafts[draftKey]);
-    if (!montant || montant <= 0) { setErrorMsg(t("fonds_versement_invalide")); return; }
-    const m = members.find((x) => x.id === memberId);
-    const nouveauTotal = Number(m?.[memberKey + "_paye"] || 0) + montant;
-    await patchMember(memberId, { [memberKey + "_paye"]: nouveauTotal, [memberKey + "_date_paiement"]: todayISO() });
-    setVersementDrafts((prev) => ({ ...prev, [draftKey]: "" }));
   }
 
   async function patchMember(id, patch) {
@@ -3500,9 +3473,6 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // même si la demande a déjà été confirmée ou rejetée).
   function memberInteracClaims(type, recouvrementId) {
     return interacClaims.filter((c) => c.member_id === me?.id && c.type === type && (type !== "recouvrement" || c.recouvrement_id === recouvrementId)).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  }
-  function confirmedInteracClaims(type) {
-    return memberInteracClaims(type).filter((c) => c.statut === "confirme");
   }
   async function interacProofUrl(claim) {
     const { data, error } = await supabase.storage.from("interac-proofs").createSignedUrl(claim.fichier_path, 60);
@@ -6994,7 +6964,7 @@ function ReceiptModal({ data, member, association, interacClaims, t, lang, money
 // Détail des modalités d'un prêt (montant, taux, dates) — complète le
 // tableau des remboursements déjà listé dans le détail des transactions
 // (suite 50, 2026-09-10).
-function LoanTermsModal({ loan, association, t, lang, moneyF, loanInterestFor, loanTotalDueFor, loanRepaidFor, onClose }) {
+function LoanTermsModal({ loan, association, t, lang, moneyF, loanTotalDueFor, onClose }) {
   const locale = lang === "en" ? "en-CA" : "fr-CA";
   const statusLabelKey = { actif: "loan_status_active", rembourse: "loan_status_repaid" }[loan.statut] || null;
   return createPortal(
@@ -7853,7 +7823,7 @@ function MemberFullProfileModal({
   );
 }
 
-function RecouvrementHistoryModal({ memberId, fonds, onClose, t, lang, members, moneyF, recouvrements, depenses, canEdit, onMarkPaid }) {
+function RecouvrementHistoryModal({ memberId, fonds, onClose, t, members, moneyF, recouvrements, depenses, canEdit, onMarkPaid }) {
   const member = members.find((m) => m.id === memberId);
   const depenseById = {};
   (depenses || []).forEach((d) => { depenseById[d.id] = d; });

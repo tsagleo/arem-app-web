@@ -11,7 +11,7 @@
 // secondes (même choix que Covoiturage.jsx, voir ce fichier pour le
 // détail du compromis technique).
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Car, MapPin, Radio, Landmark } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Container, Card, useLang, LanguageSwitcher, TextSizeControl, BG, TEAL, TEAL_LIGHT, RED } from "./shared";
@@ -50,7 +50,7 @@ function statutColor(statut) {
 }
 
 export default function SuiviTrajet({ token }) {
-  const { t, lang } = useLang();
+  const { t } = useLang();
   const [result, setResult] = useState(undefined); // undefined = chargement, null = introuvable
 
   const load = useCallback(async () => {

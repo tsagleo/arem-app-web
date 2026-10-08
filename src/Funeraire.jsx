@@ -52,9 +52,9 @@
 //
 // Script SQL : sql/2026-09-21c_funeraire_refonte2.sql.
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { HeartHandshake, Plus, X, UserPlus, AlertTriangle, Trash2, HandCoins, CreditCard, Loader2, Printer, Megaphone, History, Wallet, Users, ShieldCheck, Search } from "lucide-react";
+import { HeartHandshake, Plus, X, UserPlus, AlertTriangle, Trash2, HandCoins, CreditCard, Loader2, Printer, Megaphone, History, Wallet, Users, Search } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, RED, TEAL, TEAL_LIGHT, CHARCOAL, Table, td, money, todayISO, OrgLegalSubline } from "./shared";
 
@@ -610,7 +610,6 @@ export default function Funeraire({ profile, isBureau, isPresident, association 
   const myBarMax = Math.max(myBalance, seuilAlerte * 2, 1);
   const myFillPct = Math.max(0, Math.min(100, (myBalance / myBarMax) * 100));
   const myThresholdPct = seuilAlerte > 0 ? Math.min(98, (seuilAlerte / myBarMax) * 100) : null;
-  const archivedDossierIds = new Set(dossiers.filter((d) => d.statut === "supprime").map((d) => d.id));
   const inscritsActifs = inscriptions.filter((i) => i.statut === "actif");
   const totalReserveIndiv = inscritsActifs.reduce((s, i) => s + memberReserveBalance(i.member_id), 0);
   const countAlert = inscritsActifs.filter((i) => { const b = memberReserveBalance(i.member_id); return !i.suspendu && b <= seuilAlerte; }).length;
@@ -1277,7 +1276,7 @@ function FuneraireVersementModal({ dossier, montantDefaut, t, onClose, onSave, o
 // DonReceiptModal (FinancesElargies.jsx) : portail plein écran dont seul
 // le contenu est visible à l'impression.
 // =====================================================================
-function FuneraireIndivLedgerModal({ memberId, memberName, inscription, mvts, balance, association, t, lang, onClose }) {
+function FuneraireIndivLedgerModal({ memberName, inscription, mvts, balance, association, t, lang, onClose }) {
   const moneyF = (n) => money(n, association?.devise_monetaire);
   const todayFormatted = new Date().toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA");
   const sorted = [...mvts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));

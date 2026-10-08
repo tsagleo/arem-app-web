@@ -10,7 +10,7 @@
 // fonction postuler_offre_emploi() plutôt qu'un insert direct, pour que
 // l'auteur de l'offre soit notifié automatiquement.
 // =====================================================================
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Briefcase, Plus, Pencil, Trash2, CheckCircle2, Send, FileText, Paperclip } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, useLang, friendlyError, RED, TEAL, TEAL_LIGHT, foldText } from "./shared";

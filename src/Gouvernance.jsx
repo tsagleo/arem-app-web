@@ -2,7 +2,7 @@
 // Gouvernance.jsx — Vision/mission, composition du bureau, élections
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Vote, Users2, Landmark, Printer, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";

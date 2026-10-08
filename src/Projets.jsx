@@ -3,7 +3,7 @@
 // échéancier avec dépendances, portefeuille multi-projets) + Kanban de tâches
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Kanban, Plus, Pencil, Trash2, LayoutDashboard, Wallet, CalendarRange, Flag, AlertTriangle,
   CheckSquare, Square, MessageSquare, History, Copy, HeartHandshake, Award, Globe, Repeat, Users, FileDown, Send,
@@ -224,7 +224,6 @@ export default function Projets({ profile, isBureau, association }) {
     setBudgetLines(bl || []); setExpenses(ex || []); setMilestones(ms || []);
     setChecklistItems(ci || []); setComments(cm || []); setDonations(dn || []);
     setLoading(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
 
@@ -1143,7 +1142,7 @@ function TaskDetailsToggle({ task, isBureau, expanded, onToggle, checklistItems,
 // =====================================================================
 // Onglet Échéancier (jalons + vue chronologique avec dépendances)
 // =====================================================================
-function TimelineTab({ tasks, milestones, members, isBureau, newMilestone, setNewMilestone, addMilestone, editMilestoneLocal, saveMilestone, deleteMilestone, t }) {
+function TimelineTab({ tasks, milestones, isBureau, newMilestone, setNewMilestone, addMilestone, editMilestoneLocal, saveMilestone, deleteMilestone, t }) {
   return (
     <>
       <Card style={{ marginBottom: 20 }}>
@@ -1448,7 +1447,7 @@ function EditTaskModal({ task, members, allTasks, tasksById, onClose, onSave, t 
 // au Bureau) — voir sql/2026-09-30_projets_modernisation.sql, section 6/7.
 // Complément « modernisation Projets » (2026-09-30).
 // =====================================================================
-export function MyVolunteerSpace({ profile }) {
+export function MyVolunteerSpace() {
   const { t } = useLang();
   const [myTasks, setMyTasks] = useState([]);
   const [opportunities, setOpportunities] = useState([]);

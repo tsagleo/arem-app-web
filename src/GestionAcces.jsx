@@ -9,7 +9,7 @@
 // l'association (verrouillé côté base de données, colonne
 // `profiles.compte_bloque` — voir sql/2026-09-07f_revocation_acces.sql).
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { UserCheck, UserX, KeyRound, Ban, ShieldCheck, Copy, Globe, FileText, Receipt, Settings, Plus, Pencil, Trash2, X } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, RuleBox, useLang, friendlyError, inputStyle, todayISO } from "./shared";

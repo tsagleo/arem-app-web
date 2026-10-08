@@ -30,7 +30,7 @@
 //     déjà utilisés ailleurs dans l'application — aucune nouvelle
 //     dépendance).
 // =====================================================================
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Video, Plus, Pencil, Trash2, Calendar, Users, FileText, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Link2, Mic, Square, FileDown, Repeat, Percent, Save, FileSignature } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, useLang, friendlyError, RED, TEAL, TEAL_LIGHT, toDatetimeLocal, datetimeLocalToISO } from "./shared";
@@ -318,7 +318,7 @@ export default function Reunions({ profile, isBureau, association }) {
   async function saveTranscription(meetingId) {
     await updateMeeting(meetingId, { transcription_text: transcriptDrafts[meetingId] ?? "" });
   }
-  async function useTranscriptionAsPv(meeting) {
+  async function transcriptionToPv(meeting) {
     const text = draftFor(meeting);
     if (!text || !text.trim()) return;
     const file = new File([text], `PV_${slugify(meeting.titre)}.txt`, { type: "text/plain" });
@@ -405,7 +405,7 @@ export default function Reunions({ profile, isBureau, association }) {
               recording={recordingId === m.id}
               draft={draftFor(m)} onDraftChange={(txt) => setDraft(m.id, txt)}
               onStartRecording={() => startRecording(m)} onStopRecording={stopRecording}
-              onSaveTranscription={() => saveTranscription(m.id)} onUseAsPv={() => useTranscriptionAsPv(m)}
+              onSaveTranscription={() => saveTranscription(m.id)} onUseAsPv={() => transcriptionToPv(m)}
             />
           ))}
         </div>
@@ -477,7 +477,7 @@ function linkBtn(color) {
 }
 
 function MeetingCard({
-  m, t, lang, isBureau, profile, rsvps, myRsvp, members, memberNom, docFor, onView, savingUpload,
+  m, t, lang, isBureau, profile, rsvps, myRsvp, memberNom, onView, savingUpload,
   attendeesOpen, onToggleAttendees, onRsvp, onMarkPresent, onUpload, onEdit, onDelete, onCancel,
   quorum, onExportPdf, onDeleteSeries,
   speechSupported, transcriptionOpen, onToggleTranscription, recording, draft, onDraftChange,
