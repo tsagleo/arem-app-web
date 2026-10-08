@@ -15,7 +15,7 @@
 // verify_member_card), qui ne projettent que des colonnes sûres — voir
 // ce script pour le détail de ce choix de sécurité.
 // =====================================================================
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED } from "./shared";
@@ -24,6 +24,33 @@ function fmtLocale(lang) { return lang === "en" ? "en-CA" : "fr-CA"; }
 
 function goToLogin() {
   window.location.href = window.location.origin + window.location.pathname;
+}
+
+// Anti-abus (plan qualité technique 2026-10-08, point 4.1) : horodatage de
+// l'affichage d'un formulaire public, exprimé en heure SERVEUR. La politique
+// RLS d'insertion compare cette valeur à now() côté base (rejet si moins de
+// 3 s ou plus de 24 h) — prendre l'horloge du visiteur faisait rejeter les
+// demandes légitimes des appareils mal réglés (correctif
+// sql/2026-10-08n_antiabus_heure_serveur.sql). On mémorise l'instant
+// d'affichage côté client, puis l'écart avec l'horloge serveur dès que
+// heure_serveur() répond ; si l'appel échoue (fonction pas encore déployée,
+// réseau), on retombe sur l'horloge du visiteur, comme avant.
+function useFormulaireDebuteLe() {
+  const ref = useRef({ debutClient: null, ecartServeur: 0 });
+  useEffect(() => {
+    ref.current.debutClient = Date.now();
+    supabase.rpc("heure_serveur").then(({ data, error }) => {
+      if (!error && data) ref.current.ecartServeur = new Date(data).getTime() - Date.now();
+    });
+  }, []);
+  return useCallback(() => new Date((ref.current.debutClient ?? Date.now()) + ref.current.ecartServeur).toISOString(), []);
+}
+
+// Une insertion refusée par la politique RLS (42501) sur un formulaire
+// public signifie en pratique « envoyé trop vite » (ou champ piège rempli) —
+// message actionnable plutôt que le « permission refusée » générique.
+function publicFormError(error, t) {
+  return error?.code === "42501" ? t("pub_form_blocked") : friendlyError(error, t);
 }
 
 function PublicHeader({ nom, logoUrl }) {
@@ -108,11 +135,8 @@ function ShowcasePage({ slug }) {
   const [form, setForm] = useState({ nom: "", courriel: "", telephone: "", sexe: "", dateNaissance: "", quartier: "", message: "", piege: "" });
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null); // null | "ok" | error message
-  // Anti-abus (plan qualité technique 2026-10-08, point 4.1) : horodatage
-  // de l'affichage du formulaire, figé une seule fois au montage (jamais
-  // recalculé aux re-rendus) — compare avec piege ci-dessus et la clause
-  // RLS de membership_requests pour le détail du mécanisme.
-  const [formulaireDebuteLe] = useState(() => new Date().toISOString());
+  // Anti-abus : voir useFormulaireDebuteLe en tête de fichier.
+  const formulaireDebuteLe = useFormulaireDebuteLe();
 
   const load = useCallback(async () => {
     const { data: prof } = await supabase.from("public_association_profile").select("*").eq("slug_public", slug).maybeSingle();
@@ -137,10 +161,10 @@ function ShowcasePage({ slug }) {
       nom: form.nom.trim(), courriel: form.courriel.trim(),
       telephone: form.telephone.trim() || null, message: form.message.trim() || null,
       sexe: form.sexe || null, date_naissance: form.dateNaissance || null, quartier: form.quartier.trim() || null,
-      piege: form.piege || null, formulaire_debute_le: formulaireDebuteLe,
+      piege: form.piege || null, formulaire_debute_le: formulaireDebuteLe(),
     });
     setSending(false);
-    if (error) { setSendResult(friendlyError(error, t)); return; }
+    if (error) { setSendResult(publicFormError(error, t)); return; }
     setSendResult("ok");
     setForm({ nom: "", courriel: "", telephone: "", sexe: "", dateNaissance: "", quartier: "", message: "", piege: "" });
   }
@@ -356,9 +380,8 @@ function EventPublicPage({ eventId }) {
   const [form, setForm] = useState({ nom: "", courriel: "", telephone: "", nb_personnes: 1, message: "", piege: "" });
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null); // null | "ok" | error message
-  // Anti-abus (plan qualité technique 2026-10-08, point 4.1) : voir le
-  // commentaire équivalent dans ShowcasePage ci-dessus.
-  const [formulaireDebuteLe] = useState(() => new Date().toISOString());
+  // Anti-abus : voir useFormulaireDebuteLe en tête de fichier.
+  const formulaireDebuteLe = useFormulaireDebuteLe();
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("public_event_detail").select("*").eq("event_id", eventId).maybeSingle();
@@ -378,10 +401,10 @@ function EventPublicPage({ eventId }) {
       association_id: ev.association_id ?? null, event_id: eventId,
       nom: form.nom.trim(), courriel: form.courriel.trim(), telephone: form.telephone.trim() || null,
       nb_personnes: Number(form.nb_personnes) || 1, message: form.message.trim() || null,
-      piege: form.piege || null, formulaire_debute_le: formulaireDebuteLe,
+      piege: form.piege || null, formulaire_debute_le: formulaireDebuteLe(),
     });
     setSending(false);
-    if (error) { setSendResult(friendlyError(error, t)); return; }
+    if (error) { setSendResult(publicFormError(error, t)); return; }
     setSendResult("ok");
     setForm({ nom: "", courriel: "", telephone: "", nb_personnes: 1, message: "", piege: "" });
   }
