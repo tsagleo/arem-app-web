@@ -1,0 +1,42 @@
+-- =====================================================================
+-- Correctif : contrainte collation_presences_mois_check trop restrictive
+-- =====================================================================
+-- Bug révélé en testant la confirmation d'un paiement Interac pour
+-- "Association Test" (suite 49, 2026-09-10) :
+--
+--   ERROR: new row for relation "collation_presences" violates check
+--   constraint "collation_presences_mois_check"
+--
+-- Cause : la contrainte a été créée avant l'ajout de la "Fréquence des
+-- réunions" (suite 35) et n'autorise que les 12 abréviations de mois
+-- réelles ("Jan".."Déc"). Mais depuis la suite 35, une association peut
+-- choisir une fréquence autre que "Mensuelle" (semaine / quinzaine / trois
+-- semaines) — dans ce cas, la colonne "mois" de collation_presences reçoit
+-- des libellés génériques ("Semaine 3", "Quinzaine 7", "Période 12"...)
+-- produits par periodKeys() côté application. "Association Test" utilise
+-- justement la fréquence "quinzaine" (≈26 séances/an), donc TOUTE tentative
+-- d'enregistrer sa Collation échoue contre cette contrainte — que ce soit
+-- via la saisie manuelle du bureau, le paiement Stripe, ou la confirmation
+-- d'un virement Interac (suite 49).
+--
+-- C'était déjà noté comme une incohérence latente non corrigée lors des
+-- tests de la suite 46 (contournée à l'époque en utilisant une valeur de
+-- test valide plutôt qu'en corrigeant la contrainte). Elle bloque
+-- maintenant un vrai flux de paiement pour toute association qui n'est
+-- pas en fréquence "Mensuelle".
+--
+-- Correctif : la colonne "mois" est entièrement pilotée par le code de
+-- l'application (periodKeys(), synchronisé entre App.jsx, l'Edge Function
+-- create-checkout-session et ce nouveau flux Interac) — elle n'accepte
+-- jamais de texte libre saisi par un utilisateur. Une contrainte de liste
+-- fixe côté base de données n'apporte donc pas de protection réelle,
+-- seulement un blocage pour les fréquences non mensuelles. On la supprime.
+-- =====================================================================
+
+alter table public.collation_presences
+  drop constraint if exists collation_presences_mois_check;
+
+-- Vérification (doit ne renvoyer aucune ligne après exécution) :
+-- select conname, pg_get_constraintdef(oid)
+-- from pg_constraint
+-- where conname = 'collation_presences_mois_check';

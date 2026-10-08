@@ -4,7 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>arem-app</title>
+    <title>Unia</title>
+
+    <!-- Mode hors-ligne / application installable (PWA), suite 84,
+         2026-09-28 — voir claude/internationalisation-universelle.md.
+         `lang`/`dir` sur <html> sont eux gérés dynamiquement par
+         LangProvider (shared.jsx) selon la langue choisie. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2E8B74" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Plateforme associative" />
   </head>
   <body>
     <div id="root"></div>

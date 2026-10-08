@@ -1,12 +1,34 @@
 :root {
+  /* Taille de texte accessible (suite accessibilité, 2026-10-06) — réglage
+     choisi par la personne via TextSizeControl (shared.jsx), persisté dans
+     localStorage et appliqué ici en zoom global plutôt qu'en font-size sur
+     <html> : la majorité des tailles de texte de l'application sont des
+     fontSize en pixels fixés dans des style={{}} en ligne (pas des rem),
+     donc un simple html { font-size } ne les ferait pas bouger. zoom met à
+     l'échelle TOUT (texte, mais aussi espacements, icônes, boutons) sans
+     casser cette mise en page — exactement ce qu'on veut pour un
+     agrandissement global cohérent. Valeur par défaut 1 (100%, inchangé)
+     tant que la personne n'a rien choisi. */
+  --app-text-scale: 1;
   --text: #6b6375;
   --text-h: #08060d;
   --bg: #fff;
   --border: #e5e4e7;
   --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  /* Couleurs de marque par défaut (mêmes valeurs que le repli codé en dur
+     dans App.jsx pour une association sans couleurs personnalisées :
+     primary #1F3864 / primaryDark = shade(primary, -18%) / accent doré
+     #8F6E19) — App.jsx réapplique ces variables localement une fois
+     connecté avec les couleurs propres à l'association, mais les pages
+     publiques (PublicShowcase.jsx : vitrine, formulaire d'adhésion,
+     inscription à un événement) ne portent aucun wrapper de thème et
+     héritaient donc du mauve #aa3bff du gabarit Vite d'origine sur leurs
+     boutons "primary" (signalé par l'utilisateur, 2026-09-30). */
+  --primary: #1F3864;
+  --primary-dark: #000a36;
+  --accent: #8F6E19;
+  --accent-bg: rgba(201, 162, 39, 0.1);
+  --accent-border: rgba(201, 162, 39, 0.5);
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
@@ -24,10 +46,25 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* overflow-x sur <html> lui-même (:root), en plus de <body> plus bas —
+     certains navigateurs mobiles laissent <html> défiler horizontalement
+     même quand <body> a overflow-x: hidden. Double filet, même correctif
+     (voir le commentaire complet sur <body>). */
+  overflow-x: hidden;
 
   @media (max-width: 1024px) {
     font-size: 16px;
   }
+}
+
+/* zoom (et non transform: scale) parce que zoom réorganise vraiment la
+   mise en page à la nouvelle taille (pas de recadrage, pas de calcul de
+   largeur compensatoire à gérer) — pris en charge par tous les navigateurs
+   visés par l'application (Chrome, Edge, Safari, Firefox récents). Sur un
+   navigateur plus ancien qui ignore zoom, l'effet est simplement nul :
+   l'application reste utilisable à 100 %, ce bouton n'est qu'un plus. */
+html {
+  zoom: var(--app-text-scale, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,9 +74,9 @@
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --accent: #E8CE7A;
+    --accent-bg: rgba(232, 206, 122, 0.15);
+    --accent-border: rgba(232, 206, 122, 0.5);
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
@@ -52,6 +89,33 @@
 
 body {
   margin: 0;
+  /* Filet de sécurité (suite Phase 6, 2026-09-29) — signalé par un test en
+     conditions réelles : un contenu trop large (ex. un texte sans espace
+     collé dans une annonce) pouvait élargir toute la page au-delà de
+     l'écran ; en faisant défiler horizontalement, on voyait alors le fond
+     sombre du thème (--bg, noir en mode sombre) derrière l'en-tête et le
+     contenu. overflow-x: hidden empêche la PAGE elle-même de déborder,
+     sans toucher au défilement horizontal voulu à l'intérieur des
+     tableaux (.table-scroll, plus bas), qui reste géré indépendamment par
+     leur propre conteneur. Voir aussi overflowWrap sur Card (shared.jsx /
+     App.jsx), qui règle la cause plutôt que la conséquence. */
+  overflow-x: hidden;
+  /* Deuxième correctif (même suite, 2026-09-29) — le premier ne réglait
+     pas tout : sur téléphone, en mode portrait seulement, un flash noir
+     apparaît pendant le défilement VERTICAL normal (pas horizontal),
+     précisément quand l'en-tête reste fixe (position: sticky). C'est un
+     comportement connu de Chrome mobile : pendant le défilement, la barre
+     d'adresse du navigateur se rétracte et agrandit la fenêtre visible ;
+     le temps que la mise en page se réajuste, une fine bande de la page
+     s'affiche sans son arrière-plan repeint (transparente), et comme
+     #root, ci-dessous, n'a lui-même aucun arrière-plan (il compte sur
+     celui de <html>/<body> par transparence), cette bande apparaît noire
+     en mode sombre. En mode paysage, la barre d'adresse ne se rétracte
+     pas de la même façon, d'où l'absence du problème. Donner à <body> son
+     propre arrière-plan explicite (au lieu de compter sur la transparence
+     jusqu'à <html>) évite ce flash, sans changer l'apparence normale de
+     la page. */
+  background: var(--bg);
 }
 
 #root {
@@ -64,6 +128,11 @@ body {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  /* Même correctif que sur <body> ci-dessus, appliqué ici aussi : #root
+     est l'élément réellement scrollé (c'est lui qui contient l'en-tête
+     sticky), donc c'est SON arrière-plan qui compte pendant le
+     réajustement de la barre d'adresse, pas seulement celui de <body>. */
+  background: var(--bg);
 }
 
 h1,
@@ -108,4 +177,90 @@ code {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+/* =====================================================================
+   Tableaux denses sur petit écran (Phase 6, feuille de route, 2026-09-29)
+   Le défilement horizontal existait déjà (overflow-x: auto sur le
+   wrapper des tableaux) mais était invisible — rien n'indiquait qu'il y
+   avait plus de colonnes à voir à droite. Ajout d'un indicateur purement
+   CSS (une ombre qui apparaît/disparaît selon la position de défilement,
+   technique classique "background-attachment: local", sans JavaScript)
+   + resserrement de la police et de l'espacement des cellules sous
+   480px de large, pour que plus de colonnes tiennent à l'écran avant
+   d'avoir besoin de défiler. S'applique à .table-scroll, la classe du
+   wrapper des tableaux (composant Table partagé + les 2 tableaux de
+   App.jsx qui n'utilisent pas ce composant).
+   ===================================================================== */
+.table-scroll {
+  position: relative;
+  background-color: white;
+  background-image:
+    linear-gradient(to right, white 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(to left, white 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(to right, rgba(31, 56, 100, .18), rgba(31, 56, 100, 0) 70%),
+    linear-gradient(to left, rgba(31, 56, 100, .18), rgba(31, 56, 100, 0) 70%);
+  background-repeat: no-repeat;
+  background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
+  background-position: 0 0, 100% 0, 0 0, 100% 0;
+  background-attachment: local, local, scroll, scroll;
+}
+
+@media (max-width: 480px) {
+  .table-scroll table {
+    font-size: 11px !important;
+  }
+  .table-scroll th,
+  .table-scroll td {
+    padding: 5px 6px !important;
+  }
+}
+
+/* =====================================================================
+   Refonte « Vie associative » — fil d'actualité (2026-09-29)
+   Effet de focus pour la barre de composition (publication + commentaires),
+   pour un rendu plus soigné/professionnel qu'un simple champ sans retour
+   visuel. La couleur de contour vient de --primary (variable posée
+   dynamiquement par l'association, voir App.jsx), donc s'adapte aux
+   couleurs propres à chaque association plutôt qu'une couleur fixe.
+   ===================================================================== */
+.va-feed-input:focus {
+  outline: none;
+  border-color: var(--primary) !important;
+  /* Repli pour les navigateurs sans color-mix() (ex. anciens Safari/WebView) :
+     une valeur invalide est simplement ignorée, donc cette ligne reste
+     active tant que la suivante ne s'applique pas. */
+  box-shadow: 0 0 0 3px rgba(31, 56, 100, 0.16);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* =====================================================================
+   Refonte « Vie associative » — mur du fil d'actualité (2026-09-29)
+   Fond « habillé » derrière les messages : le dégradé de couleurs est posé
+   en style inline (voir VieAssociative.jsx, il dépend des variables
+   --primary/--accent propres à l'association) ; cette classe ajoute juste
+   un léger grain en surimpression (::before, impossible en style inline)
+   et une barre de défilement plus discrète que le style par défaut.
+   ===================================================================== */
+.va-feed-wall {
+  position: relative;
+}
+.va-feed-wall::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.55) 1px, transparent 0);
+  background-size: 22px 22px;
+  opacity: 0.6;
+}
+.va-feed-wall::-webkit-scrollbar {
+  width: 8px;
+}
+.va-feed-wall::-webkit-scrollbar-track {
+  background: transparent;
+}
+.va-feed-wall::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--primary) 30%, transparent);
+  border-radius: 999px;
 }
