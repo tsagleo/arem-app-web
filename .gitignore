@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Metadonnees locales Supabase CLI (regenerees par 'supabase link')
+supabase/.temp/
+
+# Secrets locaux
+.env
+.env.local
