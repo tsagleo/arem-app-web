@@ -33,7 +33,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, X, Search, Trash2, Download, Printer, CalendarDays, QrCode, CheckCircle2, XCircle, Clock, LogOut, History, Settings, AlertTriangle } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, foldText, Pill, TEAL, TEAL_LIGHT, RED } from "./shared";
+import { Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, foldText, Pill, TEAL, TEAL_LIGHT, RED, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 const AMBER = "#C9962A";
 const AMBER_LIGHT = "#FBF3DA";
@@ -81,33 +81,8 @@ function fmtDate(dateStr, lang) {
   const [y, m, d] = dateStr.split("-").map(Number);
   return new Date(y, m - 1, d).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA", { year: "numeric", month: "short", day: "numeric" });
 }
-// Pour un datetime-local (<input type="datetime-local">) : convertit un
-// timestamptz (toujours stocké en UTC) vers l'heure LOCALE de l'appareil
-// qui affiche le formulaire, chiffre par chiffre (getFullYear/getHours/…)
-// plutôt qu'un simple slice() de la chaîne ISO — un slice() afficherait
-// l'heure UTC brute, décalée par rapport à l'heure locale dès que
-// l'appareil n'est pas lui-même en UTC (correction demandée par
-// l'utilisateur, 2026-09-30 : le fuseau doit toujours être celui de
-// l'appareil qui pointe/saisit les horaires, jamais un fuseau fixe).
-function toDatetimeLocal(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-// Sens inverse : une valeur de <input type="datetime-local"> (ex.
-// "2026-09-30T14:00", sans fuseau) est interprétée par `new Date(...)`
-// dans le fuseau LOCAL du navigateur — exactement l'appareil qui pointe —
-// puis reconvertie en UTC pour le stockage timestamptz. C'est ce qui
-// remplace l'ancien envoi de la chaîne brute (qui laissait Postgres
-// l'interpréter dans SON propre fuseau, presque toujours UTC, d'où le
-// décalage signalé par l'utilisateur pour toute association hors UTC).
-function datetimeLocalToISO(value) {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
-}
+// toDatetimeLocal / datetimeLocalToISO : voir shared.jsx (fuseau de
+// l'appareil qui pointe/saisit, jamais un fuseau fixe — 2026-09-30).
 
 function retardMinutesOf(heureArrivee, heureDebutPrevue) {
   if (!heureArrivee || !heureDebutPrevue) return null;

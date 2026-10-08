@@ -23,7 +23,7 @@ import {
   Repeat2, Plus, Calendar, Flag, MapPin, PartyPopper,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Table, td, inputStyle, useLang, friendlyError, foldText, RED, TEAL } from "./shared";
+import { Section, Container, Card, Btn, Table, td, inputStyle, useLang, friendlyError, foldText, RED, TEAL, toDatetimeLocal } from "./shared";
 
 const MONTH_NAMES = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -2175,7 +2175,7 @@ export default function VieAssociative({ profile, isBureau, onFeedOpened }) {
 function EditPostForm({ post, onSave, onCancel, t, inputStyle, isBureau }) {
   const [contenu, setContenu] = useState(post.contenu);
   const [datePublication, setDatePublication] = useState(
-    post.date_publication ? new Date(post.date_publication).toISOString().slice(0, 16) : ""
+    toDatetimeLocal(post.date_publication)
   );
   // La programmation d'une date de publication future reste une capacité
   // du Bureau — un adhérent qui modifie sa propre publication ne peut

@@ -8,7 +8,7 @@ import {
   QrCode, ScanLine, Car, HeartHandshake, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText } from "./shared";
+import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 const STAR_COLOR = "#F5A623";
 const AMBER = "#8A5A00";
@@ -498,7 +498,7 @@ export default function Evenements({ profile, isBureau, association }) {
     if (!window.confirm(t("ev_confirm_create").replace("{titre}", newEvent.titre.trim()))) return;
     const { data, error } = await supabase.from("events").insert({
       association_id: profile.association_id, titre: newEvent.titre, description: newEvent.description, lieu: newEvent.lieu,
-      date_debut: newEvent.date_debut, capacite_max: newEvent.capacite_max ? Number(newEvent.capacite_max) : null,
+      date_debut: datetimeLocalToISO(newEvent.date_debut), capacite_max: newEvent.capacite_max ? Number(newEvent.capacite_max) : null,
       prix: Number(newEvent.prix) || 0, lien_reunion: newEvent.lien_reunion.trim() || null,
       categorie: newEvent.categorie.trim() || null, recurrence: newEvent.recurrence || null,
       prix_membre: newEvent.prix_membre !== "" ? Number(newEvent.prix_membre) : null,
@@ -719,7 +719,7 @@ export default function Evenements({ profile, isBureau, association }) {
     if (!newSession.titre.trim()) return;
     const { data, error } = await supabase.from("event_sessions").insert({
       association_id: profile.association_id, event_id: eventId, titre: newSession.titre.trim(),
-      date_debut: newSession.date_debut || null, date_fin: newSession.date_fin || null,
+      date_debut: datetimeLocalToISO(newSession.date_debut), date_fin: datetimeLocalToISO(newSession.date_fin),
       lieu: newSession.lieu.trim() || null, description: newSession.description.trim() || null,
       ordre: eventSessions(eventId).length,
     }).select().single();
@@ -1780,7 +1780,7 @@ function EventReviewsModal({ event, reviews, myReview, canReview, isBureau, onCl
 function EditEventModal({ event, onClose, onSave, t, association }) {
   const [form, setForm] = useState({
     titre: event.titre || "", description: event.description || "", lieu: event.lieu || "",
-    date_debut: event.date_debut ? new Date(event.date_debut).toISOString().slice(0, 16) : "",
+    date_debut: toDatetimeLocal(event.date_debut),
     capacite_max: event.capacite_max ?? "", prix: event.prix ?? "", lien_reunion: event.lien_reunion || "",
     categorie: event.categorie || "", recurrence: event.recurrence || "", prix_membre: event.prix_membre ?? "",
     check_in_actif: event.check_in_actif || false, public_inscription: event.public_inscription || false,

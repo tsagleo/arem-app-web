@@ -26,7 +26,7 @@ import { Car, Plus, Pencil, Trash2, MapPin, Calendar, Users, Repeat, Link2, Sear
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, money, useLang, friendlyError, foldText, TEAL, TEAL_LIGHT, RED } from "./shared";
+import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, money, useLang, friendlyError, foldText, TEAL, TEAL_LIGHT, RED, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 // ---------- Suggestions de messages/signalements préétablis (volet
 // Paramètres uniquement — rien n'est créé en base tant que le bureau ne
@@ -462,7 +462,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
     const { data, error } = await supabase.from("carpool_offers").insert({
       association_id: profile.association_id, member_id: profile.member_id, member_nom: profile.nom_complet,
       point_depart: form.point_depart.trim(), point_arrivee: form.point_arrivee.trim(),
-      date_heure: form.date_heure, recurrence: form.recurrence, places_disponibles: Number(form.places_disponibles) || 1,
+      date_heure: datetimeLocalToISO(form.date_heure), recurrence: form.recurrence, places_disponibles: Number(form.places_disponibles) || 1,
       prix_place: form.prix_place === "" ? null : Number(form.prix_place), event_id: form.event_id || null, notes: form.notes.trim() || null,
       depart_lat: depart?.lat ?? null, depart_lng: depart?.lng ?? null, arrivee_lat: arrivee?.lat ?? null, arrivee_lng: arrivee?.lng ?? null,
       pref_non_fumeur: !!form.pref_non_fumeur, pref_musique: !!form.pref_musique, pref_animaux: !!form.pref_animaux,
@@ -478,7 +478,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
     const { data, error } = await supabase.from("carpool_requests").insert({
       association_id: profile.association_id, member_id: profile.member_id, member_nom: profile.nom_complet,
       point_depart: form.point_depart.trim(), point_arrivee: form.point_arrivee.trim(),
-      date_heure: form.date_heure, places_demandees: Number(form.places_demandees) || 1,
+      date_heure: datetimeLocalToISO(form.date_heure), places_demandees: Number(form.places_demandees) || 1,
       event_id: form.event_id || null, notes: form.notes.trim() || null,
       depart_lat: depart?.lat ?? null, depart_lng: depart?.lng ?? null, arrivee_lat: arrivee?.lat ?? null, arrivee_lng: arrivee?.lng ?? null,
     }).select().single();
@@ -807,8 +807,8 @@ export default function Covoiturage({ profile, isBureau, association }) {
                     {eventLinkCount(ev.id) > 0 && <span style={{ marginLeft: 8, color: TEAL, fontWeight: 600 }}>{t("cov_events_link_count").replace("{n}", eventLinkCount(ev.id))}</span>}
                   </div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11.5 }} onClick={() => { setPrefill({ kind: "offre", event_id: ev.id, point_arrivee: ev.lieu || "", date_heure: ev.date_debut ? ev.date_debut.slice(0, 16) : "" }); setShowCreate(true); }}>{t("cov_events_offer_btn")}</Btn>
-                    <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11.5 }} onClick={() => { setPrefill({ kind: "demande", event_id: ev.id, point_arrivee: ev.lieu || "", date_heure: ev.date_debut ? ev.date_debut.slice(0, 16) : "" }); setShowCreate(true); }}>{t("cov_events_request_btn")}</Btn>
+                    <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11.5 }} onClick={() => { setPrefill({ kind: "offre", event_id: ev.id, point_arrivee: ev.lieu || "", date_heure: toDatetimeLocal(ev.date_debut) }); setShowCreate(true); }}>{t("cov_events_offer_btn")}</Btn>
+                    <Btn variant="outline" style={{ padding: "5px 10px", fontSize: 11.5 }} onClick={() => { setPrefill({ kind: "demande", event_id: ev.id, point_arrivee: ev.lieu || "", date_heure: toDatetimeLocal(ev.date_debut) }); setShowCreate(true); }}>{t("cov_events_request_btn")}</Btn>
                     {eventLinkCount(ev.id) > 0 && <button onClick={() => setEventFilter((p) => (p === ev.id ? "" : ev.id))} style={linkBtn(eventFilter === ev.id ? RED : "var(--primary)")}>{eventFilter === ev.id ? t("cov_events_filter_clear") : t("cov_events_filter_btn")}</button>}
                   </div>
                 </div>
@@ -2371,7 +2371,7 @@ function EditRideModal({ t, editing, onClose, onSave }) {
   const row = editing.row;
   const [form, setForm] = useState({
     point_depart: row.point_depart, point_arrivee: row.point_arrivee,
-    date_heure: row.date_heure ? row.date_heure.slice(0, 16) : "",
+    date_heure: toDatetimeLocal(row.date_heure),
     places_disponibles: row.places_disponibles || 1, places_demandees: row.places_demandees || 1,
     prix_place: row.prix_place ?? "", notes: row.notes || "",
     pref_non_fumeur: !!row.pref_non_fumeur, pref_musique: !!row.pref_musique, pref_animaux: !!row.pref_animaux,
@@ -2396,8 +2396,8 @@ function EditRideModal({ t, editing, onClose, onSave }) {
     if (departChanged) { geo.depart_lat = depart?.lat ?? null; geo.depart_lng = depart?.lng ?? null; }
     if (arriveeChanged) { geo.arrivee_lat = arrivee?.lat ?? null; geo.arrivee_lng = arrivee?.lng ?? null; }
     await onSave(isOffer
-      ? { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: form.date_heure, places_disponibles: Number(form.places_disponibles) || 1, prix_place: form.prix_place === "" ? null : Number(form.prix_place), notes: form.notes.trim() || null, pref_non_fumeur: !!form.pref_non_fumeur, pref_musique: !!form.pref_musique, pref_animaux: !!form.pref_animaux, ...geo }
-      : { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: form.date_heure, places_demandees: Number(form.places_demandees) || 1, notes: form.notes.trim() || null, ...geo }
+      ? { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: datetimeLocalToISO(form.date_heure), places_disponibles: Number(form.places_disponibles) || 1, prix_place: form.prix_place === "" ? null : Number(form.prix_place), notes: form.notes.trim() || null, pref_non_fumeur: !!form.pref_non_fumeur, pref_musique: !!form.pref_musique, pref_animaux: !!form.pref_animaux, ...geo }
+      : { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: datetimeLocalToISO(form.date_heure), places_demandees: Number(form.places_demandees) || 1, notes: form.notes.trim() || null, ...geo }
     );
     setSaving(false);
   }

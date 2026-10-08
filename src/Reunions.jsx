@@ -33,7 +33,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Video, Plus, Pencil, Trash2, Calendar, Users, FileText, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Link2, Mic, Square, FileDown, Repeat, Percent, Save, FileSignature } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, useLang, friendlyError, RED, TEAL, TEAL_LIGHT } from "./shared";
+import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, useLang, friendlyError, RED, TEAL, TEAL_LIGHT, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 const AMBER = "#8A5A00";
 const AMBER_LIGHT = "#FDF3DF";
@@ -645,7 +645,7 @@ function CreateMeetingModal({ t, association, onClose, onCreate }) {
 
 function EditMeetingModal({ t, meeting, onClose, onSave }) {
   const [form, setForm] = useState({
-    titre: meeting.titre, date_heure: meeting.date_heure ? meeting.date_heure.slice(0, 16) : "",
+    titre: meeting.titre, date_heure: toDatetimeLocal(meeting.date_heure),
     lien_visio: meeting.lien_visio || "", notes: meeting.notes || "",
     rappel_heures_avant: meeting.rappel_heures_avant || 2,
     quorum: meeting.quorum_requis_pourcentage ?? "",
@@ -665,7 +665,7 @@ function EditMeetingModal({ t, meeting, onClose, onSave }) {
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
           <Btn variant="outline" onClick={onClose}>{t("action_cancel")}</Btn>
           <Btn onClick={() => onSave({
-            titre: form.titre.trim(), date_heure: form.date_heure, lien_visio: form.lien_visio.trim() || null, notes: form.notes.trim() || null,
+            titre: form.titre.trim(), date_heure: datetimeLocalToISO(form.date_heure), lien_visio: form.lien_visio.trim() || null, notes: form.notes.trim() || null,
             rappel_heures_avant: Math.max(1, Number(form.rappel_heures_avant) || 2),
             ...(meeting.type_reunion === "assemblee_generale" ? { quorum_requis_pourcentage: form.quorum === "" ? null : Number(form.quorum) } : {}),
           })}>{t("action_save")}</Btn>

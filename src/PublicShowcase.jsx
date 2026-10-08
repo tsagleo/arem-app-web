@@ -18,9 +18,8 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED } from "./shared";
+import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED, formatEventDateTime } from "./shared";
 
-function fmtLocale(lang) { return lang === "en" ? "en-CA" : "fr-CA"; }
 
 function goToLogin() {
   window.location.href = window.location.origin + window.location.pathname;
@@ -184,7 +183,6 @@ function ShowcasePage({ slug }) {
     );
   }
 
-  const locale = lang === "en" ? "en-CA" : "fr-CA";
 
   return (
     <div style={{ minHeight: "100vh", background: BG, fontFamily: "Inter, -apple-system, sans-serif" }}>
@@ -235,7 +233,7 @@ function ShowcasePage({ slug }) {
             {events.map((ev) => (
               <Card key={ev.id}>
                 <h4 style={{ fontSize: 14.5, marginBottom: 6 }}>{ev.titre}</h4>
-                <div style={{ fontSize: 12, color: "#333", marginBottom: 4 }}>📅 {new Date(ev.date_debut).toLocaleString(locale)}</div>
+                <div style={{ fontSize: 12, color: "#333", marginBottom: 4 }}>📅 {formatEventDateTime(ev.date_debut, lang)}</div>
                 {ev.lieu && <div style={{ fontSize: 12, color: "#333", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}><MapPin size={11} /> {ev.lieu}</div>}
                 {ev.description && <p style={{ fontSize: 12, color: "#5B6270", marginTop: 8, marginBottom: 8 }}>{ev.description}</p>}
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--primary,#1F3864)" }}>
@@ -424,7 +422,6 @@ function EventPublicPage({ eventId }) {
     );
   }
 
-  const locale = fmtLocale(lang);
   const full = ev.places_restantes === 0;
 
   return (
@@ -436,7 +433,7 @@ function EventPublicPage({ eventId }) {
         {ev.association_devise_texte && <p style={{ color: "#5B6270", fontSize: 13, marginBottom: 20 }}>{ev.association_devise_texte}</p>}
 
         <Card style={{ marginBottom: 24, maxWidth: 480 }}>
-          <div style={{ fontSize: 12.5, color: "#333", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><CalendarDays size={14} /> {new Date(ev.date_debut).toLocaleString(locale)}</div>
+          <div style={{ fontSize: 12.5, color: "#333", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><CalendarDays size={14} /> {formatEventDateTime(ev.date_debut, lang)}</div>
           {ev.lieu && <div style={{ fontSize: 12.5, color: "#333", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}><MapPin size={14} /> {ev.lieu}</div>}
           {ev.description && <p style={{ fontSize: 13, color: "#5B6270", marginTop: 10, marginBottom: 10 }}>{ev.description}</p>}
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -454,7 +451,7 @@ function EventPublicPage({ eventId }) {
               {sessions.map((s, i) => (
                 <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: "white" }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.titre}</div>
-                  {s.date_debut && <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{new Date(s.date_debut).toLocaleString(locale)}{s.lieu ? ` · ${s.lieu}` : ""}</div>}
+                  {s.date_debut && <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{formatEventDateTime(s.date_debut, lang)}{s.lieu ? ` · ${s.lieu}` : ""}</div>}
                   {s.description && <div style={{ fontSize: 12, color: "#5B6270", marginTop: 3 }}>{s.description}</div>}
                 </div>
               ))}

@@ -44,6 +44,40 @@ export function money(n, devise = "CAD") {
   }
 }
 
+// Dates et heures saisies dans un <input type="datetime-local"> (correctif
+// fuseau horaire, 2026-10-08 — déplacé depuis Presences.jsx pour que tous
+// les écrans l'utilisent). Ce champ donne une heure SANS fuseau (ex.
+// "2026-10-10T18:00"). Envoyée telle quelle, Postgres la lisait comme de
+// l'UTC : un événement saisi à 18 h à Halifax (UTC−3) s'affichait à 15 h.
+// datetimeLocalToISO l'interprète dans le fuseau de l'appareil qui saisit,
+// puis la convertit en UTC pour le stockage timestamptz.
+export function datetimeLocalToISO(value) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+// Sens inverse, pour pré-remplir un formulaire de modification : heure
+// LOCALE de l'appareil, chiffre par chiffre. Un simple iso.slice(0, 16)
+// afficherait l'heure UTC brute, décalée hors UTC.
+export function toDatetimeLocal(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+// Date et heure lisibles d'un événement, ex. « samedi 10 octobre 2026 à
+// 18 h 00 » / « Saturday, October 10, 2026 at 6:00 p.m. ».
+export function formatEventDateTime(iso, lang) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const locale = lang === "en" ? "en-CA" : "fr-CA";
+  const jour = d.toLocaleDateString(locale, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const heure = d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  return lang === "en" ? `${jour} at ${heure}` : `${jour} à ${heure}`;
+}
+
 // Montant « en toutes lettres » (français) — mention obligatoire du reçu
 // fiscal CERFA 2041-RD (reçu fiscal conforme, 2026-10-06). Le nom de la
 // devise elle-même (« euros », « dollars canadiens »...) n'est PAS une
