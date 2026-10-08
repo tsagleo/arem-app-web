@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 import { Vote, Users2, Landmark, Printer, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import {
-  Section, Container, Card, Btn, Field, Table, td, RuleBox, Banner, inputStyle, useLang, RED, SignatureLine, friendlyError, OrgLegalSubline,
+  Section, Container, Card, Btn, Field, Table, td, RuleBox, Banner, inputStyle, useLang, RED, SignatureLine, friendlyError, OrgLegalSubline, datetimeLocalToISO,
 } from "./shared";
 
 export default function Gouvernance({ profile, isBureau, association }) {
@@ -73,7 +73,7 @@ export default function Gouvernance({ profile, isBureau, association }) {
   async function createElection() {
     if (!newElection.titre || !newElection.date_debut || !newElection.date_fin) return;
     if (!window.confirm(t("gov_confirm_create_election").replace("{titre}", newElection.titre))) return;
-    const { data, error } = await supabase.from("elections").insert({ association_id: profile.association_id, ...newElection, statut: "ouverte" }).select().single();
+    const { data, error } = await supabase.from("elections").insert({ association_id: profile.association_id, ...newElection, date_debut: datetimeLocalToISO(newElection.date_debut), date_fin: datetimeLocalToISO(newElection.date_fin), statut: "ouverte" }).select().single();
     if (!error) { setElections((p) => [data, ...p]); setNewElection({ titre: "", description: "", date_debut: "", date_fin: "" }); }
   }
   const [candDraft, setCandDraft] = useState({}); // { electionId: {member_id, poste_vise} }
