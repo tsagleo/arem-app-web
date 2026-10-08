@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import {
   Users, LayoutDashboard, HeartHandshake, FileBarChart, Plus, ShieldCheck,
@@ -12,25 +12,52 @@ import { supabase } from "./supabaseClient";
 import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, pushSupported, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
 import { useUnreadCounts } from "./useUnreadCounts";
 import PresentationAssociation from "./PresentationAssociation";
-import PublicShowcase from "./PublicShowcase.jsx";
-import SuiviTrajet from "./SuiviTrajet.jsx";
-import GestionAcces from "./GestionAcces.jsx";
-import Gouvernance from "./Gouvernance.jsx";
-import VieAssociative from "./VieAssociative.jsx";
-import Projets, { MyVolunteerSpace } from "./Projets";
-import Evenements from "./Evenements";
-import Sondages from "./Sondages";
-import Funeraire from "./Funeraire";
-import Sanctions from "./Sanctions.jsx";
-import FinancesElargies from "./FinancesElargies";
-import PaymentHistory from "./PaymentHistory";
-import FinanceSynthese from "./FinanceSynthese";
-import Comptabilite from "./Comptabilite";
-import RapportAnnuel from "./RapportAnnuel";
-import Presences, { MyAttendanceHistory } from "./Presences.jsx";
-import Covoiturage from "./Covoiturage.jsx";
-import Reunions from "./Reunions.jsx";
-import Emploi from "./Emploi.jsx";
+
+// Chargement à la demande (2026-10-08) : chaque rubrique est téléchargée
+// seulement quand on l'ouvre, au lieu d'un unique fichier de près de 2 Mo
+// au démarrage — ouverture nettement plus rapide, surtout sur téléphone.
+// lazyModule enveloppe chaque rubrique dans son propre <Suspense>, donc les
+// endroits qui l'affichent n'ont pas à changer. `pick` sert aux exports
+// nommés (ex. MyVolunteerSpace dans Projets).
+function lazyModule(load, pick = "default") {
+  const Lazy = lazy(() => load().then((m) => ({ default: m[pick] })));
+  return function LazyModule(props) {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <Lazy {...props} />
+      </Suspense>
+    );
+  };
+}
+function ModuleLoader() {
+  return (
+    <div style={{ minHeight: 200, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <Loader2 size={24} color={EMERALD_DARK_DEFAULT} style={{ animation: "spin 1s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+const PublicShowcase = lazyModule(() => import("./PublicShowcase.jsx"));
+const SuiviTrajet = lazyModule(() => import("./SuiviTrajet.jsx"));
+const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
+const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
+const VieAssociative = lazyModule(() => import("./VieAssociative.jsx"));
+const Projets = lazyModule(() => import("./Projets"));
+const MyVolunteerSpace = lazyModule(() => import("./Projets"), "MyVolunteerSpace");
+const Evenements = lazyModule(() => import("./Evenements"));
+const Sondages = lazyModule(() => import("./Sondages"));
+const Funeraire = lazyModule(() => import("./Funeraire"));
+const Sanctions = lazyModule(() => import("./Sanctions.jsx"));
+const FinancesElargies = lazyModule(() => import("./FinancesElargies"));
+const PaymentHistory = lazyModule(() => import("./PaymentHistory"));
+const FinanceSynthese = lazyModule(() => import("./FinanceSynthese"));
+const Comptabilite = lazyModule(() => import("./Comptabilite"));
+const RapportAnnuel = lazyModule(() => import("./RapportAnnuel"));
+const Presences = lazyModule(() => import("./Presences.jsx"));
+const MyAttendanceHistory = lazyModule(() => import("./Presences.jsx"), "MyAttendanceHistory");
+const Covoiturage = lazyModule(() => import("./Covoiturage.jsx"));
+const Reunions = lazyModule(() => import("./Reunions.jsx"));
+const Emploi = lazyModule(() => import("./Emploi.jsx"));
 
 // =====================================================================
 // CONSTANTES
