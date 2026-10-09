@@ -63,7 +63,8 @@ export default function MesEngagements({ me, association }) {
     try {
       // Code protégé de ma carte (sql/2026-10-10c), repli sur l'ancien.
       const { data: jeton } = await supabase.rpc("mon_jeton_carte");
-      await downloadMemberBadgesPdf([{ ...me, verification_token: jeton || me.verification_token, role_label: P.member }], { association, lang, fileName: "mon_badge_membre.pdf" });
+      const { data: carte } = await supabase.from("member_card_tokens").select("emis_le").eq("member_id", me.id).maybeSingle();
+      await downloadMemberBadgesPdf([{ ...me, verification_token: jeton || me.verification_token, emis_le: carte?.emis_le || null, role_label: P.member }], { association, lang, fileName: "mon_badge_membre.pdf" });
     } catch (e) { alert(friendlyError(e, t)); }
   }
 

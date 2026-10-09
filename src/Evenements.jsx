@@ -1233,12 +1233,13 @@ export default function Evenements({ profile, isBureau, association }) {
     ]);
     if (error) { alert(rpcErr(error)); return; }
     // Codes protégés des cartes (sql/2026-10-10c) — repli sur l'ancien code.
-    const { data: jetons } = await supabase.from("member_card_tokens").select("member_id,token");
+    const { data: jetons } = await supabase.from("member_card_tokens").select("member_id,token,emis_le");
     const jetonDe = (m) => (jetons || []).find((j) => j.member_id === m.id)?.token || m.verification_token;
+    const emisLe = (m) => (jetons || []).find((j) => j.member_id === m.id)?.emis_le || null;
     const today = new Date().toISOString().slice(0, 10);
     const poste = (id) => (board || []).find((b) => b.member_id === id && (!b.mandat_fin || b.mandat_fin >= today))?.poste;
     try {
-      await downloadMemberBadgesPdf((mems || []).map((m) => ({ ...m, verification_token: jetonDe(m), role_label: poste(m.id) || EP.member })), {
+      await downloadMemberBadgesPdf((mems || []).map((m) => ({ ...m, verification_token: jetonDe(m), emis_le: emisLe(m), role_label: poste(m.id) || EP.member })), {
         association, lang, fileName: `badges_membres_${safeFileName(association?.nom)}.pdf`,
       });
     } catch (e) { alert(rpcErr(e)); }

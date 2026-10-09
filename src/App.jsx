@@ -43,6 +43,7 @@ const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
 const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
 import { CompteNonRelieBanner, AideDemandeAdhesion } from "./LiaisonCompte.jsx";
 import MesEngagements from "./MesEngagements.jsx";
+import ParametresBadges from "./ParametresBadges.jsx";
 const VieAssociative = lazyModule(() => import("./VieAssociative.jsx"));
 const Projets = lazyModule(() => import("./Projets"));
 const MyVolunteerSpace = lazyModule(() => import("./Projets"), "MyVolunteerSpace");
@@ -5932,6 +5933,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
             </div>
           </Card>
           )}
+          {configSection === "adhesion" && isBureau && <ParametresBadges association={association} onAssociationChange={onAssociationChange} />}
 
           {configSection === "modules" && (
           <>

@@ -52,6 +52,8 @@ export const EVPLUS_TXT = {
     member: "Adhérent(e)",
     since: "Membre depuis {d}",
     valid: "Valable en {y}",
+    validUntil: "Valable jusqu'au {d}",
+    status_carte_expiree: "Carte expirée : imprimez un nouveau badge",
     scanHint: "À l'entrée, scannez la carte de membre (ou le billet) d'un adhérent : il n'est pointé que s'il est inscrit à cet événement.",
     status_enregistre: "✓ Entrée enregistrée",
     status_deja_valide: "Déjà pointé(e) — premier passage à {h}",
@@ -123,6 +125,8 @@ export const EVPLUS_TXT = {
     member: "Member",
     since: "Member since {d}",
     valid: "Valid in {y}",
+    validUntil: "Valid until {d}",
+    status_carte_expiree: "Expired card: print a new badge",
     scanHint: "At the entrance, scan a member's membership card (or ticket): they are checked in only if registered for this event.",
     status_enregistre: "✓ Check-in recorded",
     status_deja_valide: "Already checked in — first at {h}",
@@ -164,6 +168,23 @@ export const EVPLUS_TXT = {
   },
 };
 export function txtEvPlus(lang) { return EVPLUS_TXT[lang === "en" ? "en" : "fr"]; }
+
+// Fin de validité d'un badge selon le réglage de l'association
+// (Configuration → Adhésion — sql 2026-10-10d). null = année en cours.
+// emisLe : date de remise du badge (member_card_tokens.emis_le).
+export function finValiditeBadge(association, emisLe) {
+  const mode = association?.badge_validite_mode || "annee";
+  if (mode === "date" && association?.badge_valide_jusqu_au) {
+    const j = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(association.badge_valide_jusqu_au));
+    return j ? new Date(+j[1], +j[2] - 1, +j[3]) : null;
+  }
+  if (mode === "duree" && Number(association?.badge_duree_mois) > 0) {
+    const d = emisLe ? new Date(emisLe) : new Date();
+    d.setMonth(d.getMonth() + Number(association.badge_duree_mois));
+    return d;
+  }
+  return null;
+}
 
 // Places occupées d'une tâche (toute proposition, confirmée ou non, réserve
 // une place — même règle que la base).
@@ -313,7 +334,11 @@ function dessinerBadgeMembre(doc, x, y, w, h, m, ctx) {
       doc.text(l, colX, ty); ty += l.length * 10;
     }
   }
-  doc.text(doc.splitTextToSize(pdfTexte(P.valid.replace("{y}", String(new Date().getFullYear()))), colW)[0] || "", colX, ty);
+  const fin = finValiditeBadge(association, m.emis_le);
+  const validite = fin ? P.validUntil.replace("{d}", fin.toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA", { day: "numeric", month: "long", year: "numeric" })) : P.valid.replace("{y}", String(new Date().getFullYear()));
+  doc.setFont("helvetica", "bold");
+  doc.text(doc.splitTextToSize(pdfTexte(validite), colW)[0] || "", colX, ty);
+  doc.setFont("helvetica", "normal");
 
   // Mentions légales, en petit, au pied du badge
   if (legal) {
