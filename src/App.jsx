@@ -41,6 +41,7 @@ const PublicShowcase = lazyModule(() => import("./PublicShowcase.jsx"));
 const SuiviTrajet = lazyModule(() => import("./SuiviTrajet.jsx"));
 const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
 const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
+import { CompteNonRelieBanner, AideDemandeAdhesion } from "./LiaisonCompte.jsx";
 const VieAssociative = lazyModule(() => import("./VieAssociative.jsx"));
 const Projets = lazyModule(() => import("./Projets"));
 const MyVolunteerSpace = lazyModule(() => import("./Projets"), "MyVolunteerSpace");
@@ -782,6 +783,7 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
       <div style={{ background: "white", borderRadius: 16, padding: 32, width: 640, maxWidth: "100%", boxShadow: "0 10px 40px rgba(0,0,0,.08)", alignSelf: "flex-start" }}>
         <h2 style={{ color: EMERALD_DARK_DEFAULT, marginBottom: 6 }}>{t("join_complete_title")}</h2>
         <p style={{ color: "#5B6270", fontSize: 13.5, marginBottom: 24 }}>{t("join_complete_intro")}</p>
+        <AideDemandeAdhesion />
         {err && <p style={{ color: RED, fontSize: 13, marginBottom: 16 }}>{err}</p>}
         <form onSubmit={handleSubmit}>
           <h3 style={{ fontSize: 14, marginBottom: 12 }}>{t("join_complete_section_fiche")}</h3>
@@ -4123,6 +4125,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
        <Banner tone="warn">{t("sub_status_banner").replace("{statut}", subscription.statut)}</Banner>
       )}
       {errorMsg && <Banner tone="warn">{errorMsg}</Banner>}
+      <CompteNonRelieBanner profile={profile} onOpen={tab === "acces" ? null : () => setTab("acces")} />
      {saving && <div className="no-print" style={{ background: TEAL_LIGHT, color: TEAL, padding: "4px 24px", fontSize: 11, textAlign: "right" }}>{t("saving_indicator")}</div>}
 
       {/* ================= NAVIGATION : SIDEBAR + BARRE SUPÉRIEURE =================

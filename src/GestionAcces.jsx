@@ -13,6 +13,8 @@ import { useState, useEffect, useCallback } from "react";
 import { UserCheck, UserX, KeyRound, Ban, ShieldCheck, Copy, Globe, FileText, Receipt, Settings, Plus, Pencil, Trash2, X } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, RuleBox, useLang, friendlyError, inputStyle, todayISO } from "./shared";
+import { LierMonCompteCard, AideTraitementDemandes } from "./LiaisonCompte";
+import { txtLiaison, fichesNomProche } from "./liaisonTextes";
 
 const ROLE_KEY_MAP = {
   bureau_president: "role_bureau_president",
@@ -49,7 +51,8 @@ const BUREAU_MODULE_LABEL_KEYS = {
 };
 
 export default function GestionAcces({ profile, association, isPresident, onPendingCountChange, onLinkRequestResolved }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const LL = txtLiaison(lang);
   const [requests, setRequests] = useState([]);
   const [membershipRequests, setMembershipRequests] = useState([]);
   const [profilesList, setProfilesList] = useState([]);
@@ -230,6 +233,13 @@ export default function GestionAcces({ profile, association, isPresident, onPend
     const req = requests.find((r) => r.id === reqId);
     const compteNom = profileName(req?.profile_id);
     if (action === "confirmer") {
+      // 2026-10-09 (demandé par l'utilisateur) — éviter les fiches en
+      // double : si aucune fiche n'est choisie alors qu'une fiche au nom
+      // proche existe sans compte, on prévient avant d'en créer une neuve.
+      if (!(chosenMember[reqId] || req?.suggested_member_id)) {
+        const proches = fichesNomProche(compteNom, availableMembers(null));
+        if (proches.length && !window.confirm(LL.req_dup_confirm.replace("{liste}", proches.map((m) => `« ${m.nom} »`).join(", ")))) return;
+      }
       // 2026-10-06 (demandé par l'utilisateur) — "Confirmer" n'intègre plus
       // directement la demande : il ouvre d'abord la fiche adhérent
       // (nouvelle ou déjà suggérée/choisie ci-dessous) pour qu'elle soit
@@ -378,6 +388,7 @@ export default function GestionAcces({ profile, association, isPresident, onPend
       <h2 style={{ marginBottom: 6 }}>{t("acces_title")}</h2>
       <p style={{ color: "#5B6270", marginBottom: 20, fontSize: 13 }}>{t("acces_intro")}</p>
       {msg && <p style={{ color: "#C0392B", fontSize: 12.5, marginBottom: 14 }}>{msg}</p>}
+      <LierMonCompteCard profile={profile} />
 
       <h3 style={{ fontSize: 14.5, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
         <Globe size={15} /> {t("acces_membership_pending_title")}
@@ -433,6 +444,7 @@ export default function GestionAcces({ profile, association, isPresident, onPend
       )}
 
       <h3 style={{ fontSize: 14.5, marginBottom: 10 }}>{t("acces_pending_title")}</h3>
+      {pending.length > 0 && <AideTraitementDemandes />}
       {pending.length === 0 ? (
         <RuleBox>{t("acces_pending_empty")}</RuleBox>
       ) : (
@@ -485,6 +497,20 @@ export default function GestionAcces({ profile, association, isPresident, onPend
                       <span style={{ fontSize: 11.5, color: "#AAB0BA" }}>{t("acces_paiement_not_paid")}</span>
                     )}
                   </div>
+                  {!(chosenMember[r.id] ?? r.suggested_member_id) && (() => {
+                    const proches = fichesNomProche(profileName(r.profile_id), availableMembers(null));
+                    return proches.length > 0 && (
+                      <div style={{ fontSize: 12, color: "#7A5300", marginTop: 6, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                        <b>{LL.req_similar} :</b>
+                        {proches.slice(0, 4).map((m) => (
+                          <span key={m.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FFF6E0", borderRadius: 999, padding: "2px 4px 2px 10px" }}>
+                            {m.nom}{m.email ? ` (${m.email})` : ""}
+                            <button onClick={() => setChosenMember((p) => ({ ...p, [r.id]: m.id }))} style={{ border: "1px solid #7A5300", background: "white", color: "#7A5300", borderRadius: 999, fontSize: 11, padding: "1px 8px", cursor: "pointer" }}>{LL.req_use_btn}</button>
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {r.preuve_paiement_note && (
                     <p style={{ fontSize: 11.5, color: "#5B6270", marginTop: 4, fontStyle: "italic" }}>« {r.preuve_paiement_note} »</p>
                   )}
