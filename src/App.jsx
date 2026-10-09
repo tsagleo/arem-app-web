@@ -42,6 +42,7 @@ const SuiviTrajet = lazyModule(() => import("./SuiviTrajet.jsx"));
 const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
 const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
 import { CompteNonRelieBanner, AideDemandeAdhesion } from "./LiaisonCompte.jsx";
+import MesEngagements from "./MesEngagements.jsx";
 const VieAssociative = lazyModule(() => import("./VieAssociative.jsx"));
 const Projets = lazyModule(() => import("./Projets"));
 const MyVolunteerSpace = lazyModule(() => import("./Projets"), "MyVolunteerSpace");
@@ -6281,6 +6282,9 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
                         <Btn variant="outline" onClick={() => window.print()}><Printer size={14} /> {t("ms_print_btn")}</Btn>
                       </div>
                     </div>
+
+                    {/* Bénévolat et badge de membre (MesEngagements.jsx, 2026-10-10) */}
+                    <MesEngagements me={me} association={association} />
 
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 22 }}>
                       <div style={{ flex: "1 1 200px", background: "white", border: "1px solid #E7E9F1", borderRadius: 12, padding: "15px 18px", boxShadow: "0 3px 12px rgba(31,56,100,0.06)" }}>

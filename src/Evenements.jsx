@@ -5,8 +5,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   CalendarDays, Plus, Pencil, Trash2, X, Video, Download, Star, MessageCircle, CreditCard, Eye, ChevronDown,
-  QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search, Printer,
+  QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search, Printer, Upload, IdCard,
 } from "lucide-react";
+import { txtEvPlus, statsBenevolat, retraitSurDemande, exporterProgrammePdf, downloadMemberBadgesPdf } from "./evenementsPlus";
 import { badgeUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
@@ -214,6 +215,9 @@ function extractBilletToken(decodedText) {
 // — « inconnu » pour un jeton brut saisi à la main (on essaie les deux).
 function extractScanTarget(decodedText) {
   const text = (decodedText || "").trim();
+  // Carte de membre (MemberCardModal / badge membre) : …?verify=<jeton>
+  const carte = /[?&]verify=([0-9a-fA-F-]{36})/.exec(text);
+  if (carte) return { kind: "membre", token: carte[1] };
   const m = /[?&]badge=([0-9a-fA-F-]{36})/.exec(text);
   if (m) return { kind: "badge", token: m[1] };
   if (/^[0-9a-fA-F-]{36}$/.test(text)) return { kind: "inconnu", token: text };
@@ -511,6 +515,9 @@ export default function Evenements({ profile, isBureau, association }) {
   const { t, lang } = useLang();
   // Libellés du lien bénévolat ↔ membres disponibles (dictionnaire local).
   const BV = BENEVOLAT_TXT[lang === "en" ? "en" : "fr"];
+  // Bénévolat encadré, carte de membre, programme (evenementsPlus.js).
+  const EP = txtEvPlus(lang);
+  const rpcErr = (error) => (error?.code === "P0001" ? error.message : (error?.code === "PGRST202" || error?.code === "42883") ? BV.sqlMissing.replace("2026-10-10a_benevolat_disponibles", "2026-10-10b_evenements_benevolat_cartes") : t("ev_error_generic") + " " + friendlyError(error, t));
   // 2026-09-28 (suite 80) — devise réelle de l'association plutôt qu'un CAD
   // codé en dur (même correctif que Projets.jsx, oublié lors du chantier
   // devise de la suite 78 : le prix d'un événement s'affichait toujours en
@@ -590,6 +597,22 @@ export default function Evenements({ profile, isBureau, association }) {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isBureau, profile.association_id]);
+
+  // Temps réel : propositions de bénévoles, validations et retraits.
+  useEffect(() => {
+    if (!profile.association_id) return;
+    let timer = null;
+    const channel = supabase.channel(`ev-benevoles-${profile.association_id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_volunteer_signups", filter: `association_id=eq.${profile.association_id}` }, () => {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          const { data } = await supabase.from("event_volunteer_signups").select("*");
+          if (data) setVolunteerSignups(data);
+        }, 500);
+      })
+      .subscribe();
+    return () => { clearTimeout(timer); supabase.removeChannel(channel); };
+  }, [profile.association_id]);
 
   // ---------- Avis sur un événement passé ----------
   // Suite 63 (2026-09-12), à la demande de l'utilisateur : « une option
@@ -851,7 +874,10 @@ export default function Evenements({ profile, isBureau, association }) {
   // =====================================================================
 
   // ---------- Programme multi-sessions (agenda informatif) ----------
-  function eventSessions(eventId) { return sessions.filter((s) => s.event_id === eventId); }
+  function eventSessions(eventId) {
+    return sessions.filter((s) => s.event_id === eventId)
+      .sort((a, b) => String(a.date_debut || "").localeCompare(String(b.date_debut || "")) || (a.ordre || 0) - (b.ordre || 0));
+  }
   async function addSession(eventId) {
     if (!newSession.titre.trim()) return;
     const { data, error } = await supabase.from("event_sessions").insert({
@@ -904,10 +930,32 @@ export default function Evenements({ profile, isBureau, association }) {
   // input : { kind, token } venant du scanner, ou texte saisi à la main
   // (jeton, lien de billet ou lien de badge). eventId : événement ouvert —
   // un badge d'un autre événement est refusé.
+  // Carte de membre à l'entrée : acceptée seulement si le membre est
+  // inscrit (confirmé) à CET événement — contrôle fait par la base.
+  async function pointerCarteMembre(token, eventId) {
+    const { data, error } = await supabase.rpc("pointer_carte_membre_evenement", { p_token: token, p_event_id: eventId });
+    if (error) { setScanResult({ status: "erreur" }); return; }
+    const row = Array.isArray(data) ? data[0] : data;
+    setScanResult(row ? { ...row, membre: true, token, eventId } : { status: "erreur" });
+    if (row?.status === "enregistre") {
+      setRsvps((prev) => prev.map((r) => (r.event_id === eventId && r.member_id === row.member_id ? { ...r, checkin_le: new Date().toISOString() } : r)));
+    }
+    setManualToken("");
+  }
+  async function inscrireEtPointer(res) {
+    const existing = rsvps.find((r) => r.event_id === res.eventId && r.member_id === res.member_id);
+    const { error } = existing
+      ? await supabase.from("event_rsvps").update({ statut: "confirme" }).eq("id", existing.id)
+      : await supabase.from("event_rsvps").insert({ event_id: res.eventId, association_id: profile.association_id, member_id: res.member_id, statut: "confirme" });
+    if (error) { alert(rpcErr(error)); return; }
+    await load();
+    await pointerCarteMembre(res.token, res.eventId);
+  }
   async function handleTicketScan(input, eventId) {
     const target = typeof input === "string" ? extractScanTarget(input) : input;
     if (!target) return;
     const { kind, token } = target;
+    if (kind === "membre") { await pointerCarteMembre(token, eventId); return; }
     if (kind !== "badge") {
       const { data, error } = await supabase.rpc("checkin_event_ticket", { p_token: token });
       const row = Array.isArray(data) ? data[0] : data;
@@ -925,6 +973,8 @@ export default function Evenements({ profile, isBureau, association }) {
     const { data, error } = await supabase.rpc("pointer_badge_public", { p_token: token, p_event_id: eventId || null });
     if (error) { setScanResult({ status: "erreur" }); return; }
     const row = Array.isArray(data) ? data[0] : data;
+    // Jeton saisi à la main inconnu des badges visiteurs : carte de membre ?
+    if (kind === "inconnu" && (!row || row.status === "introuvable")) { await pointerCarteMembre(token, eventId); return; }
     setScanResult(row ? { ...row, badge: true, member_nom: row.nom } : { status: "erreur" });
     if (row?.status === "enregistre") {
       setPublicRegistrations((prev) => prev.map((r) => (r.id === row.inscription_id ? { ...r, checkin_le: row.checkin_le } : r)));
@@ -933,6 +983,10 @@ export default function Evenements({ profile, isBureau, association }) {
   }
   function scanResultText(res) {
     const B = BADGE_TXT[lang === "en" ? "en" : "fr"];
+    if (res.membre && EP["status_" + res.status]) {
+      const h = res.checkin_le ? new Date(res.checkin_le).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" }) : "";
+      return EP["status_" + res.status].replace("{h}", h) + (res.member_nom ? ` — ${res.member_nom}` : "");
+    }
     if (!res.badge || !B["status_" + res.status]) {
       return t("ev_checkin_status_" + res.status) + (res.member_nom ? ` — ${res.member_nom}` : "");
     }
@@ -947,7 +1001,18 @@ export default function Evenements({ profile, isBureau, association }) {
     const warn = scanResult.status === "deja_valide";
     return (
       <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, background: ok ? TEAL_LIGHT : warn ? "#FFF3CD" : "#FBE4E1", color: ok ? TEAL : warn ? "#8A6D00" : RED }}>
+        {scanResult.membre && scanResult.photo_url && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <img src={scanResult.photo_url} alt="" style={{ width: 64, height: 64, borderRadius: 10, objectFit: "cover", border: "2px solid white" }} />
+            <span style={{ fontSize: 11.5, fontWeight: 500 }}>{EP.checkPhoto}</span>
+          </div>
+        )}
         {scanResultText(scanResult)}
+        {scanResult.membre && scanResult.status === "non_inscrit" && isBureau && (
+          <div style={{ marginTop: 8 }}>
+            <Btn style={{ padding: "5px 12px", fontSize: 12 }} onClick={() => inscrireEtPointer(scanResult)}>{EP.enrollNow}</Btn>
+          </div>
+        )}
       </div>
     );
   }
@@ -1095,13 +1160,78 @@ export default function Evenements({ profile, isBureau, association }) {
     const { data, error } = await supabase.rpc("se_porter_volontaire_evenement", { p_task_id: taskId });
     if (error) { alert(t("ev_error_generic") + " " + friendlyError(error, t)); return; }
     const row = Array.isArray(data) ? data[0] : data;
-    if (row?.status === "inscrit") load();
+    if (row?.status === "inscrit") { alert(EP.pendingInfo); load(); }
     else if (row?.status === "complet") alert(t("ev_volunteer_full"));
     else alert(t("ev_volunteer_error"));
   }
+  // Retrait : libre avant le délai de prévenance, sur demande après
+  // (la personne reste engagée jusqu'à l'accord du bureau) — voir
+  // se_retirer_benevolat() dans sql/2026-10-10b.
   async function leaveVolunteerTask(signup) {
-    const { error } = await supabase.from("event_volunteer_signups").delete().eq("id", signup.id);
-    if (!error) setVolunteerSignups((p) => p.filter((s) => s.id !== signup.id));
+    const task = volunteerTasks.find((vt) => vt.id === signup.task_id);
+    const ev = task ? events.find((e) => e.id === task.event_id) : null;
+    let motif = null;
+    if (retraitSurDemande(ev, signup)) {
+      motif = window.prompt(EP.withdrawLateInfo.replace("{h}", String(ev?.benevolat_delai_heures ?? 72)), "");
+      if (motif === null) return;
+    } else if (!window.confirm(EP.withdrawFreeConfirm)) return;
+    const { data, error } = await supabase.rpc("se_retirer_benevolat", { p_signup_id: signup.id, p_motif: motif });
+    if (error) { alert(rpcErr(error)); return; }
+    if (data === "retrait_demande") alert(EP.withdrawRequested);
+    load();
+  }
+  async function cancelWithdrawal(signup) {
+    const { error } = await supabase.rpc("annuler_retrait_benevolat", { p_signup_id: signup.id });
+    if (error) { alert(rpcErr(error)); return; }
+    load();
+  }
+  async function decideVolunteer(signup, accepter) {
+    const nom = members.find((m) => m.id === signup.member_id)?.nom || "—";
+    if (!accepter && !window.confirm(EP.confirmRefuse.replace("{nom}", nom))) return;
+    const { error } = await supabase.rpc("valider_benevole", { p_signup_id: signup.id, p_accepter: accepter });
+    if (error) { alert(rpcErr(error)); return; }
+    load();
+  }
+  async function removeVolunteer(signup) {
+    const nom = members.find((m) => m.id === signup.member_id)?.nom || "—";
+    const msg = signup.statut === "retrait_demande" ? EP.confirmAcceptWithdraw : EP.confirmRemove;
+    if (!window.confirm(msg.replace("{nom}", nom))) return;
+    const { error } = await supabase.rpc("accepter_retrait_benevole", { p_signup_id: signup.id });
+    if (error) { alert(rpcErr(error)); return; }
+    load();
+  }
+
+  // ---------- Badges des membres (carte de membre = badge d'entrée) ----------
+  async function printMemberBadges() {
+    const [{ data: mems, error }, { data: board }] = await Promise.all([
+      supabase.from("members").select("id,nom,statut,photo_url,verification_token,date_adhesion").eq("association_id", profile.association_id).eq("statut", "Actif").order("nom"),
+      supabase.from("board_members").select("member_id,poste,mandat_fin").eq("association_id", profile.association_id),
+    ]);
+    if (error) { alert(rpcErr(error)); return; }
+    const today = new Date().toISOString().slice(0, 10);
+    const poste = (id) => (board || []).find((b) => b.member_id === id && (!b.mandat_fin || b.mandat_fin >= today))?.poste;
+    try {
+      await downloadMemberBadgesPdf((mems || []).map((m) => ({ ...m, role_label: poste(m.id) || EP.member })), {
+        association, lang, fileName: `badges_membres_${safeFileName(association?.nom)}.pdf`,
+      });
+    } catch (e) { alert(rpcErr(e)); }
+  }
+
+  // ---------- Programme officiel : PDF, impression, archive ----------
+  async function programmePdf(ev, sortie) {
+    try { await exporterProgrammePdf({ ev, sessions: eventSessions(ev.id), association, lang, sortie }); }
+    catch (e) { alert(rpcErr(e)); }
+  }
+  async function archiveProgramme(ev) {
+    try {
+      const res = await exporterProgrammePdf({ ev, sessions: eventSessions(ev.id), association, lang, sortie: "blob" });
+      const path = `${profile.association_id}/${Date.now()}_${res.fichier}`;
+      const { error: upErr } = await supabase.storage.from("documents").upload(path, res.blob, { contentType: "application/pdf" });
+      if (upErr) throw upErr;
+      const { error } = await supabase.from("documents").insert({ association_id: profile.association_id, nom: res.fichier, storage_path: path, rubrique: "evenements", uploaded_by: profile.id });
+      if (error) throw error;
+      alert(EP.progArchived);
+    } catch (e) { alert(rpcErr(e)); }
   }
 
   // ---------- Covoiturage entre membres ----------
@@ -1498,33 +1628,59 @@ export default function Evenements({ profile, isBureau, association }) {
             </div>
           )}
 
-          {currentTab === "programme" && (
-            <Card style={{ padding: "6px 26px", maxWidth: 820 }}>
-              {eventSessions(ev.id).length === 0 && <p style={{ fontSize: 13, color: "#686F7D", fontStyle: "italic", padding: "14px 0" }}>{t("ev_sessions_empty")}</p>}
-              {eventSessions(ev.id).map((s) => (
-                <div key={s.id} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "16px 0", borderBottom: "1px solid rgba(42,42,42,.07)", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{s.titre}</div>
-                    {s.date_debut && <div style={{ fontSize: 12, color: "rgba(42,42,42,.5)", marginTop: 2 }}>{new Date(s.date_debut).toLocaleString(lang === "en" ? "en-CA" : "fr-CA")}{s.lieu ? ` · ${s.lieu}` : ""}</div>}
-                    {s.description && <div style={{ fontSize: 12.5, color: "rgba(42,42,42,.65)", marginTop: 4 }}>{s.description}</div>}
-                  </div>
-                  {isBureau && (
-                    <button onClick={() => deleteSession(s.id)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", padding: 0, flexShrink: 0, display: "flex" }}><Trash2 size={13} /></button>
-                  )}
+          {currentTab === "programme" && (() => {
+            const liste = eventSessions(ev.id);
+            const heure = (iso) => (iso ? new Date(iso).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" }) : "");
+            const jour = (iso) => (iso ? new Date(iso).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA", { weekday: "long", day: "numeric", month: "long" }) : "");
+            const plusieursJours = new Set(liste.map((x) => (x.date_debut ? new Date(x.date_debut).toDateString() : ""))).size > 1;
+            const pillBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(42,42,42,.14)", borderRadius: 999, padding: "6px 14px", cursor: "pointer", color: TEAL, fontSize: 12.5, fontWeight: 600 };
+            return (
+              <Card style={{ padding: "18px 26px", maxWidth: 860 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                  <button onClick={() => programmePdf(ev, "telecharger")} style={pillBtn}><FileDown size={13} /> {EP.progPdf}</button>
+                  <button onClick={() => programmePdf(ev, "imprimer")} style={pillBtn}><Printer size={13} /> {EP.progPrint}</button>
+                  {isBureau && <button onClick={() => archiveProgramme(ev)} style={pillBtn}><Upload size={13} /> {EP.progArchive}</button>}
                 </div>
-              ))}
-              {isBureau && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "16px 0" }}>
-                  <input placeholder={t("ev_session_title_placeholder")} style={inputStyle} value={newSession.titre} onChange={(e) => setNewSession({ ...newSession, titre: e.target.value })} />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input type="datetime-local" style={inputStyle} value={newSession.date_debut} onChange={(e) => setNewSession({ ...newSession, date_debut: e.target.value })} />
-                    <input placeholder={t("ev_session_location_placeholder")} style={inputStyle} value={newSession.lieu} onChange={(e) => setNewSession({ ...newSession, lieu: e.target.value })} />
-                  </div>
-                  <Btn onClick={() => addSession(ev.id)} style={{ alignSelf: "flex-start" }}><Plus size={13} /> {t("ev_session_add_btn")}</Btn>
+                {liste.length === 0 && <p style={{ fontSize: 13, color: "#686F7D", fontStyle: "italic", padding: "14px 0" }}>{t("ev_sessions_empty")}</p>}
+                <div style={{ position: "relative" }}>
+                  {liste.map((x, i) => {
+                    const nouveauJour = plusieursJours && (i === 0 || new Date(liste[i - 1].date_debut).toDateString() !== new Date(x.date_debut).toDateString());
+                    return (
+                      <React.Fragment key={x.id}>
+                        {nouveauJour && <div style={{ fontSize: 12, fontWeight: 700, textTransform: "capitalize", color: NAVY, margin: "12px 0 4px" }}>{jour(x.date_debut)}</div>}
+                        <div style={{ display: "grid", gridTemplateColumns: "92px 14px 1fr auto", gap: 10, alignItems: "flex-start", padding: "10px 0", borderBottom: "1px solid rgba(42,42,42,.06)" }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: NAVY, textAlign: "right" }}>
+                            {heure(x.date_debut)}{x.date_fin && <div style={{ fontSize: 11, fontWeight: 500, color: "#686F7D" }}>→ {heure(x.date_fin)}</div>}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "center", paddingTop: 4 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: TEAL, boxShadow: `0 0 0 3px ${TEAL_LIGHT}` }} /></div>
+                          <div>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>{x.titre}</div>
+                            {x.lieu && <div style={{ fontSize: 12, color: "#5B6270", marginTop: 2 }}>📍 {x.lieu}</div>}
+                            {x.description && <div style={{ fontSize: 12.5, color: "rgba(42,42,42,.7)", marginTop: 4 }}>{x.description}</div>}
+                          </div>
+                          {isBureau ? (
+                            <button onClick={() => deleteSession(x.id)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", padding: 0, display: "flex" }}><Trash2 size={13} /></button>
+                          ) : <span />}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
-              )}
-            </Card>
-          )}
+                {isBureau && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "16px 0 4px" }}>
+                    <input placeholder={t("ev_session_title_placeholder")} style={inputStyle} value={newSession.titre} onChange={(e) => setNewSession({ ...newSession, titre: e.target.value })} />
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 8 }}>
+                      <label style={{ fontSize: 11.5, color: "#5B6270" }}>{EP.progStart}<input type="datetime-local" style={inputStyle} value={newSession.date_debut} onChange={(e) => setNewSession({ ...newSession, date_debut: e.target.value })} /></label>
+                      <label style={{ fontSize: 11.5, color: "#5B6270" }}>{EP.progEnd}<input type="datetime-local" style={inputStyle} value={newSession.date_fin} onChange={(e) => setNewSession({ ...newSession, date_fin: e.target.value })} /></label>
+                      <label style={{ fontSize: 11.5, color: "#5B6270" }}>{EP.progPlace}<input placeholder={t("ev_session_location_placeholder")} style={inputStyle} value={newSession.lieu} onChange={(e) => setNewSession({ ...newSession, lieu: e.target.value })} /></label>
+                    </div>
+                    <input placeholder={EP.progDesc} style={inputStyle} value={newSession.description} onChange={(e) => setNewSession({ ...newSession, description: e.target.value })} />
+                    <Btn onClick={() => addSession(ev.id)} style={{ alignSelf: "flex-start" }}><Plus size={13} /> {t("ev_session_add_btn")}</Btn>
+                  </div>
+                )}
+              </Card>
+            );
+          })()}
 
           {currentTab === "participants" && isBureau && (
             <Table head={[t("member"), t("ev_col_status"), t("ev_col_actions")]}>
@@ -1579,6 +1735,22 @@ export default function Evenements({ profile, isBureau, association }) {
           {currentTab === "benevolat" && (
             <div>
               {eventVolunteerTasks(ev.id).length === 0 && <p style={{ fontSize: 13, color: "#686F7D", fontStyle: "italic" }}>{t("ev_volunteer_empty")}</p>}
+              {eventVolunteerTasks(ev.id).length > 0 && (() => {
+                const st = statsBenevolat(eventVolunteerTasks(ev.id), volunteerSignups);
+                return (
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: NAVY, background: "#F4F6FA", borderRadius: 10, padding: "8px 12px", marginBottom: 12 }}>
+                    {EP.summary.replace("{c}", st.comblees).replace("{n}", st.total).replace("{a}", st.attente).replace("{r}", st.retraits)}
+                  </div>
+                );
+              })()}
+              <p style={{ fontSize: 11.5, color: "#5B6270", margin: "0 0 12px" }}>{EP.policyNote.replace("{h}", String(ev.benevolat_delai_heures ?? 72))}</p>
+              {isBureau && (
+                <form onSubmit={(e) => { e.preventDefault(); const h = Number(new FormData(e.currentTarget).get("delai")); if (h >= 0 && h <= 720) updateEvent(ev.id, { benevolat_delai_heures: h }); }} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+                  <label style={{ fontSize: 12 }}>{EP.delayLabel}</label>
+                  <input name="delai" type="number" min={0} max={720} defaultValue={ev.benevolat_delai_heures ?? 72} key={ev.benevolat_delai_heures ?? 72} style={{ ...inputStyle, width: 90 }} />
+                  <Btn type="submit" variant="outline" style={{ padding: "4px 12px", fontSize: 12 }}>{EP.delaySave}</Btn>
+                </form>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 14 }}>
                 {eventVolunteerTasks(ev.id).map((task) => {
                   const signups = taskSignups(task.id);
@@ -1588,9 +1760,31 @@ export default function Evenements({ profile, isBureau, association }) {
                     <Card key={task.id} style={{ padding: 18 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                         <div>
-                          <div style={{ fontSize: 13.5, fontWeight: 600 }}>{task.titre} <span style={{ color: "#9AA2B5", fontWeight: 400 }}>({signups.length}/{task.membres_requis})</span></div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600 }}>
+                            {task.titre} <span style={{ color: "#9AA2B5", fontWeight: 400 }}>({signups.length}/{task.membres_requis})</span>{" "}
+                            {taskFull && signups.every((x) => (x.statut || "confirme") === "confirme") && <Pill color={TEAL} bg={TEAL_LIGHT}>{EP.complete}</Pill>}
+                          </div>
                           {task.description && <div style={{ fontSize: 12, color: "#5B6270", marginTop: 4 }}>{task.description}</div>}
-                          {signups.length > 0 && <div style={{ fontSize: 11.5, color: "#5B6270", marginTop: 4 }}>{signups.map((s) => members.find((m) => m.id === s.member_id)?.nom).filter(Boolean).join(", ")}</div>}
+                          {signups.map((x) => {
+                            const stx = x.statut || "confirme";
+                            const col = stx === "confirme" ? TEAL : stx === "en_attente" ? "#8A6D00" : RED;
+                            const linkBtn = { background: "none", border: "none", cursor: "pointer", fontSize: 11.5, padding: 0, fontWeight: 600 };
+                            return (
+                              <div key={x.id} style={{ marginTop: 6, fontSize: 12 }}>
+                                <span>{members.find((m) => m.id === x.member_id)?.nom || "—"}</span>{" "}
+                                <span style={{ fontSize: 10.5, fontWeight: 700, color: col, border: `1px solid ${col}`, borderRadius: 999, padding: "0 6px" }}>{EP["st_" + stx]}</span>
+                                {stx === "retrait_demande" && x.retrait_motif && <div style={{ fontSize: 11, color: "#5B6270" }}>{EP.reason} : {x.retrait_motif}</div>}
+                                {isBureau && (
+                                  <span style={{ display: "inline-flex", gap: 10, marginLeft: 8 }}>
+                                    {stx === "en_attente" && <button onClick={() => decideVolunteer(x, true)} style={{ ...linkBtn, color: TEAL }}>{EP.validate}</button>}
+                                    {stx === "en_attente" && <button onClick={() => decideVolunteer(x, false)} style={{ ...linkBtn, color: RED }}>{EP.refuse}</button>}
+                                    {stx === "retrait_demande" && <button onClick={() => removeVolunteer(x)} style={{ ...linkBtn, color: RED }}>{EP.acceptWithdraw}</button>}
+                                    {stx === "confirme" && <button onClick={() => removeVolunteer(x)} style={{ ...linkBtn, color: "#686F7D" }}>{EP.remove}</button>}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                         {isBureau && (
                           <button onClick={() => deleteVolunteerTask(task.id)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", padding: 0, flexShrink: 0, display: "flex" }}><Trash2 size={13} /></button>
@@ -1599,9 +1793,19 @@ export default function Evenements({ profile, isBureau, association }) {
                       {profile.member_id && !mineSignup && !taskFull && (
                         <button onClick={() => volunteerForTask(task.id)} style={{ marginTop: 8, background: "none", border: "none", color: TEAL, cursor: "pointer", fontSize: 12, padding: 0, fontWeight: 600 }}>{t("ev_volunteer_signup_btn")}</button>
                       )}
-                      {mineSignup && (
-                        <button onClick={() => leaveVolunteerTask(mineSignup)} style={{ marginTop: 8, background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: 0 }}>{t("ev_volunteer_leave_btn")}</button>
-                      )}
+                      {mineSignup && (() => {
+                        const stx = mineSignup.statut || "confirme";
+                        return (
+                          <div style={{ marginTop: 8, fontSize: 12 }}>
+                            <div style={{ fontWeight: 600, color: stx === "confirme" ? TEAL : "#8A6D00" }}>{EP.myStatus.replace("{s}", EP["st_" + stx])}</div>
+                            {stx === "retrait_demande" ? (
+                              <button onClick={() => cancelWithdrawal(mineSignup)} style={{ marginTop: 4, background: "none", border: "none", color: TEAL, cursor: "pointer", fontSize: 12, padding: 0, fontWeight: 600 }}>{EP.cancelWithdraw}</button>
+                            ) : (
+                              <button onClick={() => leaveVolunteerTask(mineSignup)} style={{ marginTop: 4, background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: 0 }}>{retraitSurDemande(ev, mineSignup) ? EP.askWithdraw : EP.withdraw}</button>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {isBureau && !taskFull && (() => {
                         const candidates = availableMembers.filter((m) => !signups.some((s) => s.member_id === m.id));
                         const linkBtn = { background: "none", border: "none", cursor: "pointer", fontSize: 11.5, padding: 0, fontWeight: 600, whiteSpace: "nowrap" };
@@ -1786,6 +1990,7 @@ export default function Evenements({ profile, isBureau, association }) {
           {currentTab === "presences" && isBureau && (
             <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 24 }}>
               <Card style={{ padding: 20 }}>
+                <p style={{ fontSize: 11.5, color: "#5B6270", margin: "0 0 6px" }}>{EP.scanHint}</p>
                 <EventQrScanner active={true} onDecode={(target) => handleTicketScan(target, ev.id)} t={t} />
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <input placeholder={t("ev_checkin_manual_placeholder")} style={{ ...inputStyle, flex: 1 }} value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
@@ -1861,9 +2066,12 @@ export default function Evenements({ profile, isBureau, association }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
         <h2 style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}><CalendarDays size={20} /> {t("nav_events")}</h2>
         {isBureau && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Btn variant="outline" onClick={printMemberBadges}><IdCard size={14} /> {EP.membersBadges}</Btn>
           <Btn onClick={() => setShowCreateForm((v) => !v)} variant={showCreateForm ? "outline" : "primary"}>
             <Plus size={14} style={{ transform: showCreateForm ? "rotate(45deg)" : "none", transition: "transform .15s ease" }} /> {showCreateForm ? t("action_close") : t("ev_create_title")}
           </Btn>
+          </div>
         )}
       </div>
 
