@@ -14,16 +14,19 @@
 // Toute la logique (chargement, enregistrements) est inchangée.
 // =====================================================================
 import { useState, useEffect, useCallback } from "react";
-import { Vote, Users2, Landmark, Trash2, Pencil, Plus, Eye, Target, Gem, ChevronDown, ChevronRight, CalendarClock } from "lucide-react";
+import { Vote, Users2, Landmark, Trash2, Pencil, Plus, Eye, Target, Gem, ChevronDown, ChevronRight, CalendarClock, Network, Gavel, FolderOpen } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import {
   Section, Container, Card, Btn, Field, Banner, inputStyle, useLang, RED, TEAL, TEAL_LIGHT, friendlyError,
 } from "./shared";
 import Elections from "./Elections";
+import { DocumentsGouvernance, Assemblees, Organigramme } from "./GouvernancePlus";
 
 const TXT = {
   fr: {
     tab_overview: "Vue d'ensemble", tab_board: "Bureau", tab_elections: "Élections",
+    tab_org: "Organigramme", tab_ag: "Assemblées", tab_docs: "Documents",
+    history: "Historique des bureaux ({n} mandat(s) passé(s))", term: "Mandat {p}",
     intro: "Identité, instances et élections de l'association.",
     edit: "Modifier", cancel: "Annuler",
     board_now: "Bureau en fonction",
@@ -44,6 +47,8 @@ const TXT = {
   },
   en: {
     tab_overview: "Overview", tab_board: "Board", tab_elections: "Elections",
+    tab_org: "Org chart", tab_ag: "General meetings", tab_docs: "Documents",
+    history: "Board history ({n} past term(s))", term: "Term {p}",
     intro: "Identity, governing bodies and elections of the association.",
     edit: "Edit", cancel: "Cancel",
     board_now: "Current board",
@@ -204,6 +209,9 @@ export default function Gouvernance({ profile, isBureau, association }) {
       <Card style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: 8, marginBottom: 22 }}>
         {ongletBtn("apercu", G.tab_overview, Landmark)}
         {ongletBtn("bureau", G.tab_board, Users2)}
+        {ongletBtn("organigramme", G.tab_org, Network)}
+        {ongletBtn("assemblees", G.tab_ag, Gavel)}
+        {ongletBtn("documents", G.tab_docs, FolderOpen)}
         {ongletBtn("elections", G.tab_elections, Vote)}
       </Card>
 
@@ -294,19 +302,39 @@ export default function Gouvernance({ profile, isBureau, association }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
             {actuels.map((b) => carteMandat(b))}
           </div>
-          {anciens.length > 0 && (
-            <div style={{ marginTop: 20 }}>
-              <button onClick={() => setShowPast((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "#5B6270", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                {showPast ? <ChevronDown size={15} /> : <ChevronRight size={15} />} {G.past.replace("{n}", String(anciens.length))}
-              </button>
-              {showPast && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12, marginTop: 10 }}>
-                  {anciens.map((b) => carteMandat(b, true))}
-                </div>
-              )}
-            </div>
-          )}
+          {anciens.length > 0 && (() => {
+            // Mémoire de l'association : mandats passés regroupés par période.
+            const an = (d) => (d ? String(d).slice(0, 4) : "?");
+            const groupes = {};
+            anciens.forEach((b) => { const k = `${an(b.mandat_debut)} – ${an(b.mandat_fin)}`; (groupes[k] = groupes[k] || []).push(b); });
+            const cles = Object.keys(groupes).sort((a, b) => b.localeCompare(a));
+            return (
+              <div style={{ marginTop: 20 }}>
+                <button onClick={() => setShowPast((v) => !v)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13, fontWeight: 600, color: "#5B6270", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {showPast ? <ChevronDown size={15} /> : <ChevronRight size={15} />} {G.history.replace("{n}", String(cles.length))}
+                </button>
+                {showPast && cles.map((k) => (
+                  <div key={k} style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--primary)", marginBottom: 6 }}>{G.term.replace("{p}", k)}</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+                      {groupes[k].map((b) => carteMandat(b, true))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </div>
+      )}
+
+      {onglet === "organigramme" && (
+        <Organigramme profile={profile} isBureau={isBureau} association={association} bureauActuel={actuels} />
+      )}
+      {onglet === "assemblees" && (
+        <Assemblees profile={profile} isBureau={isBureau} association={association} members={members} />
+      )}
+      {onglet === "documents" && (
+        <DocumentsGouvernance profile={profile} isBureau={isBureau} association={association} />
       )}
 
       {/* ---------------- Élections ---------------- */}

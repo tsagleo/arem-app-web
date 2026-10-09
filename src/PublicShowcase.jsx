@@ -132,6 +132,9 @@ function ShowcasePage({ slug }) {
   const { t, lang } = useLang();
   const [profile, setProfile] = useState(undefined); // undefined = chargement, null = introuvable
   const [board, setBoard] = useState([]);
+  // Responsables de rubriques, affichés seulement si l'association l'a
+  // choisi (Gouvernance → Organigramme — sql/2026-10-10h).
+  const [responsables, setResponsables] = useState([]);
   const [events, setEvents] = useState([]);
   const [form, setForm] = useState({ nom: "", courriel: "", telephone: "", sexe: "", dateNaissance: "", quartier: "", message: "", piege: "" });
   const [sending, setSending] = useState(false);
@@ -149,6 +152,8 @@ function ShowcasePage({ slug }) {
       ]);
       setBoard(bm || []);
       setEvents(ev || []);
+      const { data: rs, error: rsErr } = await supabase.from("public_responsables").select("*").eq("slug_public", slug);
+      setResponsables(rsErr ? [] : rs || []);
     }
   }, [slug]);
   useEffect(() => { load(); }, [load]);
@@ -209,8 +214,25 @@ function ShowcasePage({ slug }) {
         {board.length > 0 && (
           <>
             <h3 style={{ fontSize: 15, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><Users2 size={16} /> {t("pub_board_title")}</h3>
+            {/* Organigramme : président(e) en tête, puis le reste du bureau
+                (2026-10-10, demande de l'utilisateur). */}
+            {(() => {
+              const tete = board.filter((b) => /pr[ée]sident/i.test(b.poste || "") && !/vice/i.test(b.poste || ""));
+              return tete.length > 0 && board.length > tete.length ? (
+                <div style={{ display: "flex", justifyContent: "center", gap: 12, marginBottom: 12 }}>
+                  {tete.map((b, i) => (
+                    <Card key={"t" + i} style={{ textAlign: "center", padding: 18, minWidth: 180, border: "2px solid #C8963E" }}>
+                      {b.photo_url ? <img src={b.photo_url} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px" }} />
+                        : <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#1F3864", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, margin: "0 auto 8px" }}>{(b.nom || "?").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</div>}
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>{b.nom}</div>
+                      <div style={{ fontSize: 12, color: "#9AA2B5" }}>{b.poste}</div>
+                    </Card>
+                  ))}
+                </div>
+              ) : null;
+            })()}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 30 }}>
-              {board.map((b, i) => (
+              {board.filter((b) => !(board.some((x) => /pr[ée]sident/i.test(x.poste || "") && !/vice/i.test(x.poste || "")) && board.length > 1 && /pr[ée]sident/i.test(b.poste || "") && !/vice/i.test(b.poste || ""))).map((b, i) => (
                 <Card key={i} style={{ textAlign: "center", padding: 16 }}>
                   {b.photo_url ? (
                     <img src={b.photo_url} alt="" style={{ width: 48, height: 48, borderRadius: "50%", objectFit: "cover", margin: "0 auto 8px" }} />
@@ -221,6 +243,22 @@ function ShowcasePage({ slug }) {
                   )}
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{b.nom}</div>
                   <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{b.poste}</div>
+                </Card>
+              ))}
+            </div>
+          </>
+        )}
+
+        {responsables.length > 0 && (
+          <>
+            <h3 style={{ fontSize: 15, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><Users2 size={16} /> {lang === "en" ? "Section managers" : "Responsables de rubriques"}</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 30 }}>
+              {responsables.map((r, i) => (
+                <Card key={i} style={{ textAlign: "center", padding: 14 }}>
+                  {r.photo_url ? <img src={r.photo_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", margin: "0 auto 6px" }} />
+                    : <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#E4F2EE", color: "#1F8A5C", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, margin: "0 auto 6px" }}>{(r.nom || "?").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</div>}
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{r.nom}</div>
+                  <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{({ inscription: lang === "en" ? "Registration" : "Inscription", tontine: lang === "en" ? "Contributions" : "Cotisation", collation: lang === "en" ? "Refreshments" : "Collation", fonds_urgence: lang === "en" ? "Emergency fund" : "Fonds d'urgence", fonds_secours: lang === "en" ? "Relief fund" : "Fonds de secours" })[r.rubrique] || r.rubrique || ""}</div>
                 </Card>
               ))}
             </div>
