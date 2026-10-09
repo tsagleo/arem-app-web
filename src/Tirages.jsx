@@ -240,6 +240,24 @@ function carillon() {
   [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => bip(f, 380, 0.08, "triangle"), i * 110));
 }
 
+// Photo de profil du participant (copiée dans le tirage, sql t), ou ses
+// initiales s'il n'en a pas ou si l'image ne charge pas.
+function initiales(nom) {
+  return (nom || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((m) => m[0].toUpperCase()).join("");
+}
+function PhotoMembre({ url, nom, size, ring }) {
+  // L'erreur est mémorisée pour CETTE image seulement : pendant le
+  // défilement, l'URL change à chaque nom.
+  const [urlEnErreur, setUrlEnErreur] = useState(null);
+  const style = { width: size, height: size, borderRadius: "50%", flexShrink: 0, border: ring ? `3px solid ${ring}` : "2px solid rgba(255,255,255,.25)", boxSizing: "border-box" };
+  if (url && url !== urlEnErreur) return <img src={url} alt="" onError={() => setUrlEnErreur(url)} style={{ ...style, objectFit: "cover", background: "#24364F" }} />;
+  return (
+    <span style={{ ...style, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#2C4466", color: "white", fontWeight: 700, fontSize: Math.round(size * 0.36) }}>
+      {initiales(nom)}
+    </span>
+  );
+}
+
 function StatutPill({ statut, L }) {
   const styles = {
     prepare: { background: "#EEF1F6", color: "#4A5468" },
@@ -275,6 +293,13 @@ function DureeSelect({ L, value, onChange, disabled, dark }) {
 function LiveStage({ tirage, L, isBureau, onNext, onAll, onDuree, busy, myMemberId, viewers, son, setSon }) {
   const ordre = ordreDe(tirage);
   const total = ordre.length;
+  // Photo de chaque participant, et préchargement de toutes les photos dès
+  // l'affichage de la scène : pendant le défilement, chaque visage apparaît
+  // instantanément au lieu de clignoter le temps du téléchargement.
+  const photoDe = Object.fromEntries(tirage.participants.map((p) => [p.member_id, p.photo_url || null]));
+  useEffect(() => {
+    tirage.participants.forEach((p) => { if (p.photo_url) { const img = new Image(); img.src = p.photo_url; } });
+  }, [tirage.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const revele = tirage.revele;
   const duree = tirage.duree_animation ?? 5;
   const [rolling, setRolling] = useState(null); // nom affiché pendant l'animation
@@ -286,7 +311,7 @@ function LiveStage({ tirage, L, isBureau, onNext, onAll, onDuree, busy, myMember
   useEffect(() => {
     if (revele <= dernierVu.current) { dernierVu.current = revele; return; }
     dernierVu.current = revele;
-    const enLice = ordre.slice(revele - 1).map((r) => r.nom);
+    const enLice = ordre.slice(revele - 1).map((r) => ({ nom: r.nom, photo: photoDe[r.member_id] }));
     if (duree === 0 || enLice.length <= 1) { if (sonRef.current) carillon(); return; }
     const totalMs = duree * 1000;
     const debut = Date.now();
@@ -388,8 +413,16 @@ function LiveStage({ tirage, L, isBureau, onNext, onAll, onDuree, busy, myMember
               {tirage.type === "libre" ? L.winner : L.number} {revele}
             </div>
             <div key={rolling ? "r" : `n${revele}`} className={rolling ? "" : "tirage-land"}
-              style={{ fontSize: big ? "clamp(40px, 8vw, 110px)" : "clamp(28px, 6vw, 52px)", fontWeight: 800, marginTop: 8, color: rolling ? "rgba(255,255,255,.55)" : GOLD, minHeight: big ? 130 : 64, lineHeight: 1.1 }}>
-              {rolling || courant.nom}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: big ? 18 : 10, marginTop: big ? 18 : 12 }}>
+              <PhotoMembre
+                url={rolling ? rolling.photo : photoDe[courant.member_id]}
+                nom={rolling ? rolling.nom : courant.nom}
+                size={big ? Math.min(260, Math.round(window.innerHeight * 0.28)) : 120}
+                ring={rolling ? null : GOLD}
+              />
+              <div style={{ fontSize: big ? "clamp(36px, 7vw, 96px)" : "clamp(26px, 5.5vw, 46px)", fontWeight: 800, color: rolling ? "rgba(255,255,255,.6)" : GOLD, lineHeight: 1.1 }}>
+                {rolling ? rolling.nom : courant.nom}
+              </div>
             </div>
             {courantEstMoi && <div className="tirage-land" style={{ marginTop: 6, color: GOLD, display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}><PartyPopper size={18} /> {tirage.type === "libre" ? L.your_win : L.your_number.replace("{n}", String(revele))}</div>}
           </>
@@ -414,8 +447,9 @@ function LiveStage({ tirage, L, isBureau, onNext, onAll, onDuree, busy, myMember
             const moi = r.member_id === myMemberId;
             const enAttente = rolling && r.position === revele;
             return (
-              <li key={r.member_id} style={{ background: moi ? "rgba(244,208,111,.18)" : "rgba(255,255,255,.07)", border: moi ? `1px solid ${GOLD}` : "1px solid transparent", borderRadius: 10, padding: big ? "10px 14px" : "8px 12px", display: "flex", gap: 10, alignItems: "baseline", opacity: enAttente ? 0.25 : 1 }}>
-                <span style={{ fontWeight: 800, color: GOLD, minWidth: 28, fontSize: big ? 18 : 14 }}>{r.position}</span>
+              <li key={r.member_id} style={{ background: moi ? "rgba(244,208,111,.18)" : "rgba(255,255,255,.07)", border: moi ? `1px solid ${GOLD}` : "1px solid transparent", borderRadius: 10, padding: big ? "8px 14px" : "6px 10px", display: "flex", gap: 10, alignItems: "center", opacity: enAttente ? 0.25 : 1 }}>
+                <span style={{ fontWeight: 800, color: GOLD, minWidth: 24, fontSize: big ? 18 : 14 }}>{r.position}</span>
+                {!enAttente && <PhotoMembre url={photoDe[r.member_id]} nom={r.nom} size={big ? 40 : 30} />}
                 <span style={{ fontSize: big ? 17 : 14 }}>{enAttente ? "…" : r.nom}</span>
               </li>
             );
@@ -545,7 +579,9 @@ function TirageCard({ tirage, L, lang, t, isBureau, onChanged, association, myMe
         <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
             {tirage.participants.map((p) => (
-              <span key={p.member_id} style={{ fontSize: 12, background: p.member_id === myMemberId ? "#FBF0CC" : TEAL_LIGHT, color: TEAL, borderRadius: 999, padding: "3px 10px", fontWeight: p.member_id === myMemberId ? 700 : 400 }}>{p.nom}</span>
+              <span key={p.member_id} style={{ fontSize: 12, background: p.member_id === myMemberId ? "#FBF0CC" : TEAL_LIGHT, color: TEAL, borderRadius: 999, padding: "3px 10px 3px 3px", fontWeight: p.member_id === myMemberId ? 700 : 400, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <PhotoMembre url={p.photo_url} nom={p.nom} size={22} />{p.nom}
+              </span>
             ))}
           </div>
           {isBureau && (
