@@ -56,6 +56,8 @@ const RapportAnnuel = lazyModule(() => import("./RapportAnnuel"));
 const Presences = lazyModule(() => import("./Presences.jsx"));
 const MyAttendanceHistory = lazyModule(() => import("./Presences.jsx"), "MyAttendanceHistory");
 const Covoiturage = lazyModule(() => import("./Covoiturage.jsx"));
+// Grille tarifaire du covoiturage (2026-10-09), affichée dans Configuration → Modules.
+const CovoiturageTarifs = lazyModule(() => import("./CovoiturageTarifs.jsx"));
 const Reunions = lazyModule(() => import("./Reunions.jsx"));
 const Emploi = lazyModule(() => import("./Emploi.jsx"));
 const Tirages = lazyModule(() => import("./Tirages.jsx"));
@@ -5893,6 +5895,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
 
           {configSection === "modules" && (
           <>
+          {(association?.covoiturage_module_actif ?? true) && <CovoiturageTarifs profile={profile} association={association} />}
           <Card style={{ maxWidth: 480, marginTop: 22 }}>
             <h3 style={{ fontSize: 14, marginBottom: 4 }}>{t("cfg_funeraire_title")}</h3>
             <p style={{ fontSize: 12, color: "#888", marginBottom: 14 }}>{t("cfg_funeraire_intro")}</p>

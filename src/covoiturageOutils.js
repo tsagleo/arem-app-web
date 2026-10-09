@@ -301,3 +301,24 @@ export function vehiculeLabel(v) {
   return [v.marque, v.modele, v.couleur, v.annee].filter(Boolean).join(" · ");
 }
 
+
+// Une ligne d'état par réservation, toutes données dérivées au même endroit.
+export function buildEtatRow(b, offers, members, vehicules) {
+  const offer = offers.find((o) => o.id === b.offer_id) || null;
+  const driver = offer ? members.find((m) => m.id === offer.member_id) || null : null;
+  const passenger = members.find((m) => m.id === b.passenger_member_id) || null;
+  const vehicule = offer?.vehicule_id ? vehicules.find((v) => v.id === offer.vehicule_id) || null : null;
+  const date = offer?.date_heure || b.created_at;
+  const dureeReelleMin = b.a_bord_at && b.terminee_at ? (new Date(b.terminee_at) - new Date(b.a_bord_at)) / 60000 : null;
+  const attenteMin = b.arrivee_at && b.a_bord_at ? (new Date(b.a_bord_at) - new Date(b.arrivee_at)) / 60000 : null;
+  const distM = b.distance_m ?? b.distance_estimee_m ?? offer?.distance_estimee_m ?? null;
+  const km = distM != null ? Number(distM) / 1000 : null;
+  const montantDu = b.montant_du != null ? Number(b.montant_du) : (offer?.prix_place != null ? Number(offer.prix_place) * (b.seats_reserved || 1) : 0);
+  return {
+    booking: b, offer, driver, passenger, vehicule, date,
+    dureeEstMin: b.duree_estimee_min ?? offer?.duree_estimee_min ?? null,
+    dureeReelleMin, attenteMin, km, montantDu,
+    paiement: b.paiement_statut || (montantDu > 0 ? "non_paye" : "offert"),
+  };
+}
+

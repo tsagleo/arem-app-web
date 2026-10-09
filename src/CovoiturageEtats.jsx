@@ -14,7 +14,7 @@
 import { useState, useMemo } from "react";
 import { FileText, Download, BarChart3, Leaf, Car, Users, Wallet, X } from "lucide-react";
 import { Card, Btn, Pill, StatCard, inputStyle, money, TEAL, TEAL_LIGHT } from "./shared";
-import { trancheLabel } from "./covoiturageOutils";
+import { trancheLabel, buildEtatRow } from "./covoiturageOutils";
 
 const AMBER = "#8A5A00";
 const AMBER_LIGHT = "#FDF3DF";
@@ -95,26 +95,6 @@ function monthKey(iso) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 function currentMonth() { return monthKey(new Date().toISOString()); }
-
-// Une ligne d'état par réservation, toutes données dérivées au même endroit.
-function buildEtatRow(b, offers, members, vehicules) {
-  const offer = offers.find((o) => o.id === b.offer_id) || null;
-  const driver = offer ? members.find((m) => m.id === offer.member_id) || null : null;
-  const passenger = members.find((m) => m.id === b.passenger_member_id) || null;
-  const vehicule = offer?.vehicule_id ? vehicules.find((v) => v.id === offer.vehicule_id) || null : null;
-  const date = offer?.date_heure || b.created_at;
-  const dureeReelleMin = b.a_bord_at && b.terminee_at ? (new Date(b.terminee_at) - new Date(b.a_bord_at)) / 60000 : null;
-  const attenteMin = b.arrivee_at && b.a_bord_at ? (new Date(b.a_bord_at) - new Date(b.arrivee_at)) / 60000 : null;
-  const distM = b.distance_m ?? b.distance_estimee_m ?? offer?.distance_estimee_m ?? null;
-  const km = distM != null ? Number(distM) / 1000 : null;
-  const montantDu = b.montant_du != null ? Number(b.montant_du) : (offer?.prix_place != null ? Number(offer.prix_place) * (b.seats_reserved || 1) : 0);
-  return {
-    booking: b, offer, driver, passenger, vehicule, date,
-    dureeEstMin: b.duree_estimee_min ?? offer?.duree_estimee_min ?? null,
-    dureeReelleMin, attenteMin, km, montantDu,
-    paiement: b.paiement_statut || (montantDu > 0 ? "non_paye" : "offert"),
-  };
-}
 
 function totals(rows) {
   const t = { trips: rows.length, km: 0, kmPassagers: 0, due: 0, paid: 0, unpaid: 0 };
