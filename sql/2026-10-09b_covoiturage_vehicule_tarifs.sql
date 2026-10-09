@@ -284,6 +284,11 @@ create table if not exists public.carpool_vehicule_plaques (
 comment on table public.carpool_vehicule_plaques is
   'Plaque d''immatriculation d''un véhicule de covoiturage — lisible seulement par le conducteur, le bureau et les passagers dont la réservation est confirmée (acceptée ou en cours/terminée).';
 
+-- La politique de lecture ci-dessous s'appuie sur carpool_offers.vehicule_id :
+-- la colonne doit exister AVANT (elle était ajoutée seulement en section 4,
+-- d'où l'erreur « column o.vehicule_id does not exist » au premier essai).
+alter table public.carpool_offers add column if not exists vehicule_id uuid references public.carpool_vehicules(id) on delete set null;
+
 alter table public.carpool_vehicule_plaques enable row level security;
 drop policy if exists "carpool_vehicule_plaques select" on public.carpool_vehicule_plaques;
 create policy "carpool_vehicule_plaques select" on public.carpool_vehicule_plaques for select to authenticated
