@@ -5,8 +5,9 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   CalendarDays, Plus, Pencil, Trash2, X, Video, Download, Star, MessageCircle, CreditCard, Eye, ChevronDown,
-  QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search,
+  QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search, Printer,
 } from "lucide-react";
+import { badgeUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
@@ -145,6 +146,56 @@ function extractBilletToken(decodedText) {
   return null;
 }
 
+// Badges des visiteurs non adhérents (sql/2026-10-09c_badges_inscriptions_
+// publiques.sql) : leur QR contient le lien …&badge=<jeton>. Le même
+// scanner lit donc les deux : { kind: "billet" | "badge" | "inconnu", token }
+// — « inconnu » pour un jeton brut saisi à la main (on essaie les deux).
+function extractScanTarget(decodedText) {
+  const text = (decodedText || "").trim();
+  const m = /[?&]badge=([0-9a-fA-F-]{36})/.exec(text);
+  if (m) return { kind: "badge", token: m[1] };
+  if (/^[0-9a-fA-F-]{36}$/.test(text)) return { kind: "inconnu", token: text };
+  const billet = extractBilletToken(text);
+  return billet ? { kind: "billet", token: billet } : null;
+}
+
+const BADGE_TXT = {
+  fr: {
+    live: "En direct",
+    arrived: "Arrivés : {a} / {b} personnes",
+    arrivedRegs: "{a} / {b} inscriptions pointées",
+    printAll: "Imprimer tous les badges (PDF)",
+    printOne: "Badge PDF",
+    scanOpen: "Scanner les badges à l'entrée",
+    scanClose: "Fermer le scanner",
+    checkedAt: "Pointé à {h}",
+    people: "{n} pers.",
+    status_enregistre: "✓ Entrée enregistrée",
+    status_deja_valide: "Déjà pointé — premier passage à {h}",
+    status_annulee: "Inscription annulée",
+    status_autre_evenement: "Badge d'un autre événement : {titre}",
+    status_introuvable: "Badge introuvable",
+    noBadge: "Aucun badge à imprimer (exécutez d'abord le script SQL des badges).",
+  },
+  en: {
+    live: "Live",
+    arrived: "Arrived: {a} / {b} people",
+    arrivedRegs: "{a} / {b} registrations checked in",
+    printAll: "Print all badges (PDF)",
+    printOne: "Badge PDF",
+    scanOpen: "Scan badges at the entrance",
+    scanClose: "Close scanner",
+    checkedAt: "Checked in at {h}",
+    people: "{n} ppl",
+    status_enregistre: "✓ Check-in recorded",
+    status_deja_valide: "Already checked in — first at {h}",
+    status_annulee: "Registration cancelled",
+    status_autre_evenement: "Badge for another event: {titre}",
+    status_introuvable: "Badge not found",
+    noBadge: "No badge to print (run the badges SQL script first).",
+  },
+};
+
 function EventQrScanner({ active, onDecode, t }) {
   const scannerRef = React.useRef(null);
   const onDecodeRef = React.useRef(onDecode);
@@ -165,12 +216,13 @@ function EventQrScanner({ active, onDecode, t }) {
         { facingMode: "environment" },
         { fps: 10, qrbox: 240 },
         (decodedText) => {
-          const token = extractBilletToken(decodedText);
-          if (!token) return;
+          const target = extractScanTarget(decodedText);
+          if (!target) return;
+          const token = target.token;
           const now = Date.now();
           if (lastScanRef.current.token === token && now - lastScanRef.current.time < 3000) return;
           lastScanRef.current = { token, time: now };
-          onDecodeRef.current?.(token);
+          onDecodeRef.current?.(target);
         },
         () => { /* image sans code lisible : ignoré */ }
       ).catch(() => { if (!cancelled) setError(t("pres_scan_camera_error")); });
@@ -382,6 +434,7 @@ export default function Evenements({ profile, isBureau, association }) {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [scanResult, setScanResult] = useState(null);
   const [manualToken, setManualToken] = useState("");
+  const [showBadgeScanner, setShowBadgeScanner] = useState(false);
   const [ticketEventId, setTicketEventId] = useState(null);
   const [linkCopiedId, setLinkCopiedId] = useState(null);
   const [newSession, setNewSession] = useState({ titre: "", date_debut: "", date_fin: "", lieu: "", description: "" });
@@ -447,6 +500,25 @@ export default function Evenements({ profile, isBureau, association }) {
     setLoading(false);
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
+
+  // Temps réel (Bureau) : nouvelles inscriptions publiques et pointages faits
+  // depuis un autre appareil — compteur « arrivés / inscrits » en direct.
+  // Nécessite sql/2026-10-09c_badges_inscriptions_publiques.sql (publication).
+  useEffect(() => {
+    if (!isBureau || !profile.association_id) return;
+    const channel = supabase.channel(`ev-public-regs-${profile.association_id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "event_public_registrations", filter: `association_id=eq.${profile.association_id}` }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          setPublicRegistrations((prev) => prev.filter((r) => r.id !== payload.old?.id));
+          return;
+        }
+        const row = payload.new;
+        if (!row?.id) return;
+        setPublicRegistrations((prev) => (prev.some((r) => r.id === row.id) ? prev.map((r) => (r.id === row.id ? { ...r, ...row } : r)) : [row, ...prev]));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isBureau, profile.association_id]);
 
   // ---------- Avis sur un événement passé ----------
   // Suite 63 (2026-09-12), à la demande de l'utilisateur : « une option
@@ -758,16 +830,72 @@ export default function Evenements({ profile, isBureau, association }) {
   }
 
   // ---------- Billet / check-in à l'entrée ----------
-  async function handleTicketScan(token) {
-    if (!token) return;
-    const { data, error } = await supabase.rpc("checkin_event_ticket", { p_token: token });
+  // input : { kind, token } venant du scanner, ou texte saisi à la main
+  // (jeton, lien de billet ou lien de badge). eventId : événement ouvert —
+  // un badge d'un autre événement est refusé.
+  async function handleTicketScan(input, eventId) {
+    const target = typeof input === "string" ? extractScanTarget(input) : input;
+    if (!target) return;
+    const { kind, token } = target;
+    if (kind !== "badge") {
+      const { data, error } = await supabase.rpc("checkin_event_ticket", { p_token: token });
+      const row = Array.isArray(data) ? data[0] : data;
+      // Jeton brut inconnu des billets adhérents : on tente un badge visiteur.
+      if (!(kind === "inconnu" && (error || row?.status === "introuvable"))) {
+        if (error) { setScanResult({ status: "erreur" }); return; }
+        setScanResult(row);
+        if (row?.status === "enregistre") {
+          setRsvps((prev) => prev.map((r) => (r.billet_token === token ? { ...r, checkin_le: new Date().toISOString() } : r)));
+        }
+        setManualToken("");
+        return;
+      }
+    }
+    const { data, error } = await supabase.rpc("pointer_badge_public", { p_token: token, p_event_id: eventId || null });
     if (error) { setScanResult({ status: "erreur" }); return; }
     const row = Array.isArray(data) ? data[0] : data;
-    setScanResult(row);
+    setScanResult(row ? { ...row, badge: true, member_nom: row.nom } : { status: "erreur" });
     if (row?.status === "enregistre") {
-      setRsvps((prev) => prev.map((r) => (r.billet_token === token ? { ...r, checkin_le: new Date().toISOString() } : r)));
+      setPublicRegistrations((prev) => prev.map((r) => (r.id === row.inscription_id ? { ...r, checkin_le: row.checkin_le } : r)));
     }
     setManualToken("");
+  }
+  function scanResultText(res) {
+    const B = BADGE_TXT[lang === "en" ? "en" : "fr"];
+    if (!res.badge || !B["status_" + res.status]) {
+      return t("ev_checkin_status_" + res.status) + (res.member_nom ? ` — ${res.member_nom}` : "");
+    }
+    const h = res.checkin_le ? new Date(res.checkin_le).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" }) : "";
+    const base = B["status_" + res.status].replace("{h}", h).replace("{titre}", res.event_titre || "");
+    const who = res.nom ? ` — ${res.nom}${Number(res.nb_personnes) > 1 ? ` (${B.people.replace("{n}", String(res.nb_personnes))})` : ""}` : "";
+    return base + who;
+  }
+  function renderScanResult() {
+    if (!scanResult) return null;
+    const ok = scanResult.status === "enregistre";
+    const warn = scanResult.status === "deja_valide";
+    return (
+      <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, background: ok ? TEAL_LIGHT : warn ? "#FFF3CD" : "#FBE4E1", color: ok ? TEAL : warn ? "#8A6D00" : RED }}>
+        {scanResultText(scanResult)}
+      </div>
+    );
+  }
+  async function printPublicBadges(ev, regs) {
+    const list = regs.filter((r) => r.statut !== "annulee" && r.badge_token);
+    if (list.length === 0) { alert(BADGE_TXT[lang === "en" ? "en" : "fr"].noBadge); return; }
+    try {
+      await downloadBadgesPdf(list.map((r) => ({
+        nom: r.nom, nb_personnes: r.nb_personnes,
+        event_titre: ev.titre, event_date_debut: ev.date_debut, event_lieu: ev.lieu,
+        association_nom: association?.nom,
+        url: badgeUrl(association?.slug_public, ev.id, r.badge_token),
+      })), {
+        logoUrl: association?.logo_url, lang,
+        fileName: list.length === 1 ? `badge_${safeFileName(list[0].nom)}.pdf` : `badges_${safeFileName(ev.titre)}.pdf`,
+      });
+    } catch (e) {
+      alert(t("ev_error_generic") + " " + friendlyError(e, t));
+    }
   }
 
   // ---------- Annulation d'un événement (jamais de modification de
@@ -1429,8 +1557,42 @@ export default function Evenements({ profile, isBureau, association }) {
           {currentTab === "public" && isBureau && ev.public_inscription && (() => {
             const regs = eventPublicRegistrations(ev.id);
             const totalPeople = regs.filter((r) => r.statut !== "annulee").reduce((s, r) => s + (Number(r.nb_personnes) || 1), 0);
+            const activeRegs = regs.filter((r) => r.statut !== "annulee");
+            const arrivedRegs = activeRegs.filter((r) => r.checkin_le);
+            const arrivedPeople = arrivedRegs.reduce((s, r) => s + (Number(r.nb_personnes) || 1), 0);
+            const B = BADGE_TXT[lang === "en" ? "en" : "fr"];
+            const pillBtn = { display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(42,42,42,.14)", borderRadius: 999, padding: "6px 14px", cursor: "pointer", color: TEAL, fontSize: 12.5 };
             return (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {regs.length > 0 && (
+                  <Card style={{ padding: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: RED, textTransform: "uppercase", letterSpacing: 0.4 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: RED, display: "inline-block" }} /> {B.live}
+                        </div>
+                        <div style={{ fontFamily: "Poppins, sans-serif", fontSize: 22, fontWeight: 700, color: NAVY, marginTop: 2 }}>
+                          {B.arrived.replace("{a}", String(arrivedPeople)).replace("{b}", String(totalPeople))}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#5B6270" }}>{B.arrivedRegs.replace("{a}", String(arrivedRegs.length)).replace("{b}", String(activeRegs.length))}</div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button onClick={() => printPublicBadges(ev, regs)} style={pillBtn}><Printer size={13} /> {B.printAll}</button>
+                        <button onClick={() => { setShowBadgeScanner((v) => !v); setScanResult(null); }} style={{ ...pillBtn, background: showBadgeScanner ? TEAL_LIGHT : "none" }}><QrCode size={13} /> {showBadgeScanner ? B.scanClose : B.scanOpen}</button>
+                      </div>
+                    </div>
+                    {showBadgeScanner && (
+                      <div style={{ maxWidth: 340, margin: "12px auto 0" }}>
+                        <EventQrScanner active={true} onDecode={(target) => handleTicketScan(target, ev.id)} t={t} />
+                        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                          <input placeholder={t("ev_checkin_manual_placeholder")} style={{ ...inputStyle, flex: 1 }} value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
+                          <Btn onClick={() => handleTicketScan(manualToken, ev.id)}>{t("ev_checkin_manual_btn")}</Btn>
+                        </div>
+                        {renderScanResult()}
+                      </div>
+                    )}
+                  </Card>
+                )}
                 {regs.length === 0 ? (
                   <p style={{ fontSize: 13, color: "#686F7D", fontStyle: "italic" }}>{t("ev_public_regs_empty")}</p>
                 ) : (
@@ -1456,9 +1618,15 @@ export default function Evenements({ profile, isBureau, association }) {
                           </td>
                           <td style={td}>
                             {r.checkin_le ? (
-                              <Pill color={TEAL} bg={TEAL_LIGHT}>{t("ev_public_reg_checked_in")}</Pill>
+                              <>
+                                <Pill color={TEAL} bg={TEAL_LIGHT}>{t("ev_public_reg_checked_in")}</Pill>
+                                <div style={{ fontSize: 11, color: "#9AA2B5", marginTop: 3 }}>{B.checkedAt.replace("{h}", new Date(r.checkin_le).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" }))}</div>
+                              </>
                             ) : (
                               <button onClick={() => checkinPublicRegistration(r)} style={{ fontSize: 11.5, fontWeight: 600, color: TEAL, background: "none", border: `1px solid ${TEAL}`, borderRadius: 999, padding: "3px 10px", cursor: "pointer" }}>{t("ev_public_reg_checkin_btn")}</button>
+                            )}
+                            {r.badge_token && r.statut !== "annulee" && (
+                              <button onClick={() => printPublicBadges(ev, [r])} title={B.printOne} style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, fontSize: 11, color: "#5B6270", background: "none", border: "none", padding: 0, cursor: "pointer" }}><QrCode size={12} /> {B.printOne}</button>
                             )}
                           </td>
                         </tr>
@@ -1473,16 +1641,12 @@ export default function Evenements({ profile, isBureau, association }) {
           {currentTab === "presences" && isBureau && (
             <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", gap: 24 }}>
               <Card style={{ padding: 20 }}>
-                <EventQrScanner active={true} onDecode={handleTicketScan} t={t} />
+                <EventQrScanner active={true} onDecode={(target) => handleTicketScan(target, ev.id)} t={t} />
                 <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                   <input placeholder={t("ev_checkin_manual_placeholder")} style={{ ...inputStyle, flex: 1 }} value={manualToken} onChange={(e) => setManualToken(e.target.value)} />
-                  <Btn onClick={() => handleTicketScan(manualToken)}>{t("ev_checkin_manual_btn")}</Btn>
+                  <Btn onClick={() => handleTicketScan(manualToken, ev.id)}>{t("ev_checkin_manual_btn")}</Btn>
                 </div>
-                {scanResult && (
-                  <div style={{ marginTop: 10, fontSize: 13, fontWeight: 600, padding: "8px 12px", borderRadius: 8, background: scanResult.status === "enregistre" ? TEAL_LIGHT : scanResult.status === "deja_valide" ? "#FFF3CD" : "#FBE4E1", color: scanResult.status === "enregistre" ? TEAL : scanResult.status === "deja_valide" ? "#8A6D00" : RED }}>
-                    {t("ev_checkin_status_" + scanResult.status)}{scanResult.member_nom ? ` — ${scanResult.member_nom}` : ""}
-                  </div>
-                )}
+                {renderScanResult()}
               </Card>
               <Table head={[t("member"), t("interac_claims_col_date")]}>
                 {confirmed.filter((r) => r.checkin_le).map((r) => (
