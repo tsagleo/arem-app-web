@@ -6,7 +6,7 @@ import {
  Bell, BellOff, FileText, History, Settings, Printer, LogOut, Download, Eye, EyeOff, Trash2, Pencil,
   Landmark, Rss, Kanban, CalendarDays, Gift, Vote, Building2, KeyRound, Copy, RefreshCw, CreditCard, X, ChevronDown, ChevronLeft,
   MoreVertical, Ban, Receipt, FileSignature, Upload, BarChart3, Wallet, Flower2, Gavel, QrCode, Search, Sparkles, ArrowRight, ChevronRight, UserCog,
-  Globe, Layers, Car, Video, Briefcase, Dices,
+  Globe, Layers, Car, Video, Briefcase, Dices, ShieldHalf,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
@@ -59,6 +59,7 @@ const Covoiturage = lazyModule(() => import("./Covoiturage.jsx"));
 const Reunions = lazyModule(() => import("./Reunions.jsx"));
 const Emploi = lazyModule(() => import("./Emploi.jsx"));
 const Tirages = lazyModule(() => import("./Tirages.jsx"));
+const ComiteRestreint = lazyModule(() => import("./ComiteRestreint.jsx"));
 
 // =====================================================================
 // CONSTANTES
@@ -110,7 +111,7 @@ const BUREAU_CONFIGURABLE_MODULES = [
   "membres", "inscription", "tontine", "collation", "urgence", "secours",
   "finances", "paiements_interac", "gouvernance", "vieassociative", "presences",
   "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages",
-  "funeraire", "sanctions", "dons", "emprunts", "documents", "annonces",
+  "funeraire", "sanctions", "comite", "dons", "emprunts", "documents", "annonces",
   "journal", "demandes_suppression", "acces", "config",
 ];
 // Libellé de navigation déjà traduit à réutiliser pour chaque module
@@ -123,7 +124,7 @@ const BUREAU_MODULE_LABEL_KEYS = {
   vieassociative: "nav_community", presences: "nav_presences", projets: "nav_projects",
   evenements: "nav_events", covoiturage: "nav_carpool", reunions: "nav_meetings",
   emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", funeraire: "nav_funeraire",
-  sanctions: "nav_sanctions", dons: "nav_donations", emprunts: "nav_loans",
+  sanctions: "nav_sanctions", comite: "nav_comite", dons: "nav_donations", emprunts: "nav_loans",
   documents: "nav_documents", annonces: "nav_announcements", journal: "nav_activity",
   demandes_suppression: "nav_del_requests", acces: "nav_access", config: "nav_config",
 };
@@ -263,7 +264,7 @@ const JRN_TABLE_LABEL_KEYS = {
   projects: "jrn_table_projects", project_tasks: "jrn_table_project_tasks",
   events: "jrn_table_events", event_rsvps: "jrn_table_event_rsvps",
   donations: "jrn_table_donations", documents: "jrn_table_documents", announcements: "jrn_table_announcements",
-  posts: "jrn_table_posts", elections: "jrn_table_elections", tirages: "jrn_table_tirages",
+  posts: "jrn_table_posts", elections: "jrn_table_elections", tirages: "jrn_table_tirages", comite_membres: "jrn_table_comite_membres",
   election_candidats: "jrn_table_election_candidats", election_votes: "jrn_table_election_votes",
   tontine_seances: "jrn_table_tontine_seances", tontine_presences: "jrn_table_tontine_presences",
   collation_presences: "jrn_table_collation_presences", board_members: "jrn_table_board_members",
@@ -2373,6 +2374,18 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   const [roleConfigs, setRoleConfigs] = useState([]);
   const isBureau = ["bureau_president", "bureau_secretaire", "bureau_tresorier", "bureau_custom"].includes(profile.role);
   const isPresident = profile.role === "bureau_president";
+  // Comité restreint (ComiteRestreint.jsx, 2026-10-09) : rubrique visible
+  // seulement des membres du comité (président d'office compris), ou du
+  // reste du bureau dès qu'une décision lui a été communiquée. La base
+  // impose de toute façon la confidentialité (RLS) ; ceci ne fait que
+  // cacher l'entrée du menu. Le président la voit toujours, même avant
+  // l'exécution du script SQL, pour y trouver le message d'installation.
+  const [comiteAcces, setComiteAcces] = useState(null);
+  useEffect(() => {
+    if (!["bureau_president", "bureau_secretaire", "bureau_tresorier", "bureau_custom"].includes(profile.role)) return;
+    supabase.rpc("comite_mon_acces").then(({ data, error }) => setComiteAcces(error ? null : data));
+  }, [profile.id, profile.role]);
+  const comiteVisible = isPresident || !!comiteAcces?.membre || (comiteAcces?.communiquees || 0) > 0;
   const isResponsable = profile.role === "responsable_rubrique";
   const isAdherent = profile.role === "adherent";
   function canEditRubrique(name) { return isBureau || (isResponsable && profile.rubrique_assignee === name); }
@@ -2433,6 +2446,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     { id: "tirages", label: t("nav_draws"), roles: ["bureau", "responsable", "adherent"], keywords: ["tirage", "hasard", "ordre de passage", "tontine", "direct"] },
     { id: "funeraire", label: t("nav_funeraire"), roles: ["bureau", "responsable", "adherent"], keywords: ["décès", "deuil", "condoléances"] },
     { id: "sanctions", label: t("nav_sanctions"), roles: ["bureau", "adherent"], keywords: ["avertissement", "suspension", "discipline"] },
+    { id: "comite", label: t("nav_comite"), roles: ["bureau"], keywords: ["comité restreint", "comité exécutif", "confidentiel", "décision"] },
     { id: "dons", label: t("nav_donations"), roles: ["bureau"], keywords: ["don", "contribution"] },
     { id: "emprunts", label: t("nav_loans"), roles: ["bureau"], keywords: ["prêt", "remboursement"] },
     { id: "documents", label: t("nav_documents"), roles: ["bureau", "responsable"], keywords: ["archive", "procès-verbal", "pv", "fichier"] },
@@ -2450,7 +2464,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // restent cherchables même sous un rôle restreint, exactement comme
   // dans navItems plus bas.
   const pageSearchIndex = searchRoleKey
-    ? PAGE_SEARCH_ITEMS.filter((p) => p.roles.includes(searchRoleKey) && (searchRoleKey !== "bureau" || !BUREAU_CONFIGURABLE_MODULES.includes(p.id) || canSeeBureauModule(p.id)))
+    ? PAGE_SEARCH_ITEMS.filter((p) => p.roles.includes(searchRoleKey) && (searchRoleKey !== "bureau" || !BUREAU_CONFIGURABLE_MODULES.includes(p.id) || canSeeBureauModule(p.id)) && (p.id !== "comite" || comiteVisible))
     : [];
 
   // Verrouillage Premium (suite 2026-10-06, répartition Standard/Premium
@@ -4020,6 +4034,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
         { id: "tirages", label: t("nav_draws"), icon: Dices },
         { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
         { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
+        { id: "comite", label: t("nav_comite"), icon: ShieldHalf },
         { id: "dons", label: t("nav_donations"), icon: Gift },
         { id: "emprunts", label: t("nav_loans"), icon: Vote },
         { id: "documents", label: t("nav_documents"), icon: FileText },
@@ -4028,7 +4043,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
         { id: "demandes_suppression", label: t("nav_del_requests"), icon: AlertTriangle },
         { id: "acces", label: t("nav_access"), icon: KeyRound },
         { id: "config", label: t("nav_config"), icon: Settings },
-      ].filter((item) => canSeeBureauModule(item.id)),
+      ].filter((item) => canSeeBureauModule(item.id) && (item.id !== "comite" || comiteVisible)),
       { id: "securite", label: t("sec_title"), icon: ShieldCheck },
     );
   } else if (isResponsable) {
@@ -6730,6 +6745,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
         isPremiumPlan ? <Sondages profile={profile} isBureau={isBureau} />
           : <Container><Section><PremiumLocked label={t("nav_polls")} onUpgrade={goToForfait} features={[t("premium_feat_sondages_1"), t("premium_feat_sondages_2"), t("premium_feat_sondages_3")]} /></Section></Container>
       )}
+      {tab === "comite" && isBureau && comiteVisible && canSeeBureauModule("comite") && <ComiteRestreint profile={profile} association={association} />}
       {tab === "tirages" && (isBureau || isResponsable || isAdherent) && (
         isPremiumPlan ? <Tirages profile={profile} isBureau={isBureau} association={association} />
           : <Container><Section><PremiumLocked label={t("nav_draws")} onUpgrade={goToForfait} features={[t("premium_feat_tirages_1"), t("premium_feat_tirages_2"), t("premium_feat_tirages_3")]} /></Section></Container>
