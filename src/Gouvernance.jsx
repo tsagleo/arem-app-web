@@ -16,14 +16,18 @@ export default function Gouvernance({ profile, isBureau, association }) {
   const [members, setMembers] = useState([]);
   const [elections, setElections] = useState([]);
   const [candidats, setCandidats] = useState([]);
-  const [votes, setVotes] = useState([]);
+  // Vote secret (sql/2026-10-09a) : plus aucun accès aux bulletins. On lit
+  // seulement l'état agrégé de chaque élection (participation, et voix une
+  // fois close) et ses propres émargements (pour savoir où l'on a voté).
+  const [etats, setEtats] = useState({}); // election_id → { close, inscrits, votants, votants_par_poste, voix }
+  const [mesEmargements, setMesEmargements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const { t, lang } = useLang();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: gi }, { data: bm }, { data: mem, error: memErr }, { data: el }, { data: cand }, { data: vt }] = await Promise.all([
+    const [{ data: gi }, { data: bm }, { data: mem, error: memErr }, { data: el }, { data: cand }, { data: et }, { data: em }] = await Promise.all([
       supabase.from("governance_info").select("*").eq("association_id", profile.association_id).maybeSingle(),
       supabase.from("board_members").select("*").eq("association_id", profile.association_id),
       // Pas de filtre association_id ici : comme pour la liste des adhérents ailleurs dans
@@ -32,11 +36,16 @@ export default function Gouvernance({ profile, isBureau, association }) {
       supabase.from("members").select("id,nom,statut").order("nom"),
       supabase.from("elections").select("*").eq("association_id", profile.association_id).order("date_debut", { ascending: false }),
       supabase.from("election_candidats").select("*"),
-      supabase.from("election_votes").select("*"),
+      supabase.rpc("etat_elections"),
+      profile.member_id
+        ? supabase.from("election_emargements").select("election_id, poste").eq("member_id", profile.member_id)
+        : Promise.resolve({ data: [] }),
     ]);
    if (memErr) setErrorMsg(friendlyError(memErr, t));
    setInfo(gi); setBoardMembers(bm || []); setMembers((mem || []).filter((m) => m.statut !== "Supprimé"));
-    setElections(el || []); setCandidats(cand || []); setVotes(vt || []);
+    setElections(el || []); setCandidats(cand || []);
+    setEtats(Object.fromEntries((et || []).map((x) => [x.election_id, x])));
+    setMesEmargements(em || []);
     setLoading(false);
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
@@ -87,32 +96,24 @@ export default function Gouvernance({ profile, isBureau, association }) {
   }
   async function deleteCandidat(candidatId) {
     if (!window.confirm(t("gov_confirm_delete_candidat"))) return;
-    // Supprime d'abord l'historique des votes liés à ce candidat (sinon ils
-    // resteraient orphelins et fausseraient les décomptes), puis le candidat.
-    const { error: voteErr } = await supabase.from("election_votes").delete().eq("candidat_id", candidatId);
-    if (voteErr) { setErrorMsg(friendlyError(voteErr, t)); return; }
+    // Les bulletins de ce candidat sont supprimés en cascade par la base
+    // (election_bulletins.candidat_id … on delete cascade).
     const { error } = await supabase.from("election_candidats").delete().eq("id", candidatId);
     if (!error) {
       setCandidats((p) => p.filter((c) => c.id !== candidatId));
-      setVotes((p) => p.filter((v) => v.candidat_id !== candidatId));
+      load();
     } else setErrorMsg(friendlyError(error, t));
   }
   async function deleteElection(electionId) {
     if (!window.confirm(t("gov_confirm_delete_election"))) return;
-    // Supprime l'historique complet rattaché à l'élection (votes puis candidats)
-    // avant l'élection elle-même, pour ne laisser aucun enregistrement orphelin.
-    const candIds = candidats.filter((c) => c.election_id === electionId).map((c) => c.id);
-    if (candIds.length > 0) {
-      const { error: voteErr } = await supabase.from("election_votes").delete().in("candidat_id", candIds);
-      if (voteErr) { setErrorMsg(friendlyError(voteErr, t)); return; }
-    }
+    // Émargements et bulletins sont supprimés en cascade par la base ; on
+    // retire les candidats, puis l'élection elle-même.
     const { error: candErr } = await supabase.from("election_candidats").delete().eq("election_id", electionId);
     if (candErr) { setErrorMsg(friendlyError(candErr, t)); return; }
     const { error } = await supabase.from("elections").delete().eq("id", electionId);
     if (!error) {
       setElections((p) => p.filter((e) => e.id !== electionId));
       setCandidats((p) => p.filter((c) => c.election_id !== electionId));
-      setVotes((p) => p.filter((v) => !candIds.includes(v.candidat_id)));
       setPvElectionId((p) => (p === electionId ? null : p));
     } else setErrorMsg(friendlyError(error, t));
   }
@@ -120,13 +121,19 @@ export default function Gouvernance({ profile, isBureau, association }) {
    if (!profile.member_id) { setErrorMsg(t("gov_not_linked")); return; }
     const nomCandidat = members.find((m) => m.id === candidats.find((c) => c.id === candidatId)?.member_id)?.nom || "";
     if (!window.confirm(t("gov_confirm_vote").replace("{nom}", nomCandidat))) return;
-    const { data, error } = await supabase.from("election_votes")
-      .insert({ election_id: electionId, candidat_id: candidatId, voter_member_id: profile.member_id }).select().single();
-    if (!error) setVotes((p) => [...p, data]);
-    else setErrorMsg(error.message.includes("duplicate") ? t("gov_already_voted") : friendlyError(error, t));
+    const { error } = await supabase.rpc("voter_election", { p_election_id: electionId, p_candidat_id: candidatId });
+    if (error) { setErrorMsg(error.message.includes("déjà voté") ? t("gov_already_voted") : friendlyError(error, t)); return; }
+    load();
   }
-  function voteCount(candidatId) { return votes.filter((v) => v.candidat_id === candidatId).length; }
-  function hasVoted(electionId) { return votes.some((v) => v.election_id === electionId && v.voter_member_id === profile.member_id); }
+  // Voix d'un candidat : connues seulement une fois l'élection close
+  // (null pendant le scrutin — aucun résultat ne doit influencer les votants).
+  function voteCount(electionId, candidatId) {
+    const voix = etats[electionId]?.voix;
+    return voix ? Number(voix[candidatId] || 0) : null;
+  }
+  function hasVoted(electionId, poste) {
+    return mesEmargements.some((m) => m.election_id === electionId && m.poste === (poste || ""));
+  }
 
   // Statut "effectif" : une élection encore marquée "ouverte" en base mais dont la
   // date de fermeture est dépassée doit être traitée comme fermée immédiatement à
@@ -232,7 +239,9 @@ export default function Gouvernance({ profile, isBureau, association }) {
 
       {elections.map((el) => {
         const cands = candidats.filter((c) => c.election_id === el.id);
-        const totalVotes = cands.reduce((s, c) => s + voteCount(c.id), 0);
+        const etat = etats[el.id];
+        const close = etat ? etat.close : effectiveStatut(el) !== "ouverte";
+        const totalVotes = close ? cands.reduce((s, c) => s + (voteCount(el.id, c.id) || 0), 0) : 0;
         return (
           <Card key={el.id} style={{ marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -266,19 +275,29 @@ export default function Gouvernance({ profile, isBureau, association }) {
               </div>
             )}
 
+            {etat && (
+              <p style={{ fontSize: 12.5, color: "#4A5468", margin: "0 0 8px" }}>
+                {t("gov_participation").replace("{v}", String(etat.votants)).replace("{i}", String(etat.inscrits))}
+                {!close && <> · <i>{t("gov_results_after_close")}</i></>}
+              </p>
+            )}
            <Table head={[t("gov_col_candidate"), t("gov_col_target_position"), t("gov_col_votes"), t("gov_col_pct"), ""]}>
               {cands.map((c) => {
-                const v = voteCount(c.id);
-                const pct = totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
+                const v = voteCount(el.id, c.id);
+                const pct = v != null && totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
+                const dejaVote = hasVoted(el.id, c.poste_vise);
                 return (
                   <tr key={c.id}>
                     <td style={{ ...td, fontWeight: 600, color: "var(--primary)" }}>{members.find((m) => m.id === c.member_id)?.nom || "—"}</td>
                     <td style={td}>{c.poste_vise}</td>
-                    <td style={td}>{v}</td>
-                    <td style={td}>{pct}%</td>
+                    <td style={td}>{v == null ? "—" : v}</td>
+                    <td style={td}>{v == null ? "—" : `${pct}%`}</td>
                     <td style={{ ...td, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      {effectiveStatut(el) === "ouverte" && !hasVoted(el.id) && profile.role === "adherent" && (
+                      {effectiveStatut(el) === "ouverte" && !dejaVote && profile.member_id && (
                         <Btn onClick={() => voteFor(el.id, c.id)} style={{ padding: "5px 12px", fontSize: 12 }}>{t("gov_vote_btn")}</Btn>
+                      )}
+                      {effectiveStatut(el) === "ouverte" && dejaVote && (
+                        <span style={{ fontSize: 11.5, color: "#1F8A5C", fontWeight: 600 }}>{t("gov_voted_for_post")}</span>
                       )}
                       {isBureau && (
                         <button onClick={() => deleteCandidat(c.id)} style={{ fontSize: 11, fontWeight: 600, color: RED, background: "none", border: `1px solid ${RED}`, borderRadius: 999, padding: "2px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -299,7 +318,7 @@ export default function Gouvernance({ profile, isBureau, association }) {
         <ElectionPVModal
           election={pvElection}
           candidats={candidats.filter((c) => c.election_id === pvElection.id)}
-          votes={votes.filter((v) => v.election_id === pvElection.id)}
+          etat={etats[pvElection.id]}
           members={members}
           association={association}
           effectiveStatutLabel={effectiveStatut(pvElection)}
@@ -317,11 +336,13 @@ export default function Gouvernance({ profile, isBureau, association }) {
 // App.jsx) : un portail plein écran dont seul le contenu est visible à
 // l'impression (le reste du DOM est masqué via `body > *:not(.pv-print-root)`).
 // =====================================================================
-function ElectionPVModal({ election, candidats, votes, members, association, effectiveStatutLabel, t, lang, onClose }) {
+function ElectionPVModal({ election, candidats, etat, members, association, effectiveStatutLabel, t, lang, onClose }) {
   const nameOf = (memberId) => members.find((m) => m.id === memberId)?.nom || "—";
-  const voteCount = (candidatId) => votes.filter((v) => v.candidat_id === candidatId).length;
+  // Vote secret : les voix ne sont connues qu'après la clôture (etat.voix
+  // est null avant) ; le PV affiche alors 0 et la mention « pas de vote ».
+  const voteCount = (candidatId) => Number(etat?.voix?.[candidatId] || 0);
   const totalVotes = candidats.reduce((s, c) => s + voteCount(c.id), 0);
-  const totalVoters = new Set(votes.map((v) => v.voter_member_id)).size;
+  const totalVoters = etat?.votants ?? 0;
 
   const postes = [...new Set(candidats.map((c) => c.poste_vise || t("gov_pv_no_position")))];
   const todayFormatted = new Date().toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA");

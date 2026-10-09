@@ -49,7 +49,7 @@ import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBo
 // association_id directe, uniquement une clé étrangère vers un parent).
 const EXPORT_TABLES = [
   "subscriptions", "profiles", "members", "board_members", "governance_info",
-  "elections", "election_candidats", "election_votes",
+  "elections", "election_candidats", "election_emargements",
   "donations", "loans", "loan_repayments",
   "fonds_depenses", "fonds_recouvrements",
   "tontine_seances", "tontine_presences", "collation_presences",
@@ -300,7 +300,7 @@ export default function RapportAnnuel({ association, isPresident }) {
         { data: governanceInfo, error: eGov },
         { data: elections, error: eEl },
         { data: electionCandidats, error: eCand },
-        { data: electionVotes, error: eVotes },
+        { data: etatsElections, error: eVotes },
         { data: events, error: eEvents },
         { data: eventRsvps, error: eRsvps },
         { data: projects, error: eProj },
@@ -315,7 +315,7 @@ export default function RapportAnnuel({ association, isPresident }) {
         supabase.from("governance_info").select("*").maybeSingle(),
         supabase.from("elections").select("*"),
         supabase.from("election_candidats").select("*"),
-        supabase.from("election_votes").select("*"),
+        supabase.rpc("etat_elections"), // vote secret : voix agrégées, connues après clôture
         supabase.from("events").select("*"),
         supabase.from("event_rsvps").select("*"),
         supabase.from("projects").select("*"),
@@ -453,7 +453,7 @@ export default function RapportAnnuel({ association, isPresident }) {
         const results = cands.map((c) => ({
           nom: memberNameById[c.member_id] || "—",
           poste: c.poste_vise || "",
-          votes: (electionVotes || []).filter((v) => v.candidat_id === c.id).length,
+          votes: Number((etatsElections || []).find((x) => x.election_id === e.id)?.voix?.[c.id] || 0),
         }));
         return { ...e, results };
       });
