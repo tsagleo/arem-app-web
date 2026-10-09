@@ -16,10 +16,10 @@
 // pour le reste du bureau dès qu'une décision lui a été communiquée
 // (voir comiteAcces dans App.jsx).
 // =====================================================================
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ShieldHalf, Plus, CalendarDays, MessageSquare, Gavel, FileText, Users, FileDown, Trash2, Send, Upload, Lock, Megaphone, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation, pdfTexte } from "./pdfOfficiel";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, friendlyError, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
 
 const BUCKET = "comite-docs";
@@ -113,6 +113,17 @@ const TXT = {
     pdf_sign: "Signatures",
     pdf_president: "Président(e)", pdf_secretary: "Secrétaire de séance",
     pdf_generated: "Document généré le {date}",
+    member_col: "Nom", role_col: "Rôle",
+    res_pv_btn: "PV de la résolution (PDF)", res_open: "Ouvrir le PV archivé", res_archived: "PV archivé dans les documents du comité",
+    res_title: "Procès-verbal de résolution", res_num: "Résolution n° {n}",
+    res_info: "Informations", res_meeting: "Réunion", res_subject: "Sujet", res_author: "Proposée par",
+    res_opened: "Mise au vote le", res_closed: "Vote clos le", res_diffusion: "Diffusion",
+    res_members: "Membres du comité à la clôture ({n})", res_text: "Texte de la résolution",
+    res_vote: "Résultat du vote", res_quorum: "Quorum requis", res_votants: "Votants",
+    res_result: "Décision", res_nominal: "Détail nominatif des votes (confidentiel)", res_no_vote: "N'a pas voté",
+    res_sign: "Lu et approuvé — signatures des membres du comité", res_signature: "Signature", res_date: "Date",
+    res_doc_title: "PV de résolution n° {n} — {titre}", res_president: "Président(e)", res_member: "Membre du comité",
+    res_mention: "Le présent procès-verbal est établi à la clôture du vote, consigné et archivé dans les documents confidentiels du comité restreint. Il vaut décharge pour les membres du comité quant à la régularité de la procédure de vote.",
   },
   en: {
     title: "Executive committee",
@@ -196,6 +207,17 @@ const TXT = {
     pdf_sign: "Signatures",
     pdf_president: "President", pdf_secretary: "Recording secretary",
     pdf_generated: "Generated on {date}",
+    member_col: "Name", role_col: "Role",
+    res_pv_btn: "Resolution minutes (PDF)", res_open: "Open filed minutes", res_archived: "Minutes filed in the committee documents",
+    res_title: "Resolution minutes", res_num: "Resolution no. {n}",
+    res_info: "Information", res_meeting: "Meeting", res_subject: "Topic", res_author: "Proposed by",
+    res_opened: "Put to vote on", res_closed: "Vote closed on", res_diffusion: "Distribution",
+    res_members: "Committee members at closing ({n})", res_text: "Text of the resolution",
+    res_vote: "Vote result", res_quorum: "Quorum required", res_votants: "Voters",
+    res_result: "Decision", res_nominal: "Votes by member (confidential)", res_no_vote: "Did not vote",
+    res_sign: "Read and approved — committee members' signatures", res_signature: "Signature", res_date: "Date",
+    res_doc_title: "Resolution minutes no. {n} — {titre}", res_president: "President", res_member: "Committee member",
+    res_mention: "These minutes are drawn up when the vote closes, recorded and filed in the executive committee's confidential documents. They discharge the committee members as to the regularity of the voting procedure.",
   },
 };
 
@@ -670,7 +692,7 @@ function DecisionForm({ L, t, reunions, sujets, nbMembres, onDone }) {
   );
 }
 
-function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile, isPresident, lectureSeule, onChanged }) {
+function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile, isPresident, lectureSeule, onChanged, association, documents = [] }) {
   const [busy, setBusy] = useState(false);
   const mesVotes = votes.filter((v) => v.decision_id === d.id);
   const monVote = mesVotes.find((v) => v.profile_id === profile.id);
@@ -741,6 +763,19 @@ function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile
         </p>
       )}
 
+      {!lectureSeule && !enVote && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
+          <button style={smallBtn} onClick={() => exporterPvResolution({ d, votes, reunions, sujets, membres, association, L, lang }).catch((e) => alert(friendlyError(e, t)))}><FileDown size={13} /> {L.res_pv_btn}</button>
+          {d.pv_document_id && (() => {
+            const archive = documents.find((x) => x.id === d.pv_document_id);
+            return archive ? (
+              <button style={smallBtn} onClick={async () => { const { data: u, error } = await supabase.storage.from(BUCKET).createSignedUrl(archive.chemin, 60); if (error) alert(friendlyError(error, t)); else window.open(u.signedUrl, "_blank", "noopener"); }}><FileText size={13} /> {L.res_open}</button>
+            ) : null;
+          })()}
+          {d.pv_document_id && <span style={{ ...muted, fontSize: 11.5 }}>✓ {L.res_archived} · {L.res_num.replace("{n}", numeroResolution(d))}</span>}
+        </div>
+      )}
+
       {peutGerer && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           {enVote && <button style={smallBtn} disabled={busy} onClick={() => rpc("cloturer_decision", { p_id: d.id }, L.confirm_close)}><CheckCircle2 size={13} /> {L.close_vote}</button>}
@@ -751,6 +786,145 @@ function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile
       )}
     </Card>
   );
+}
+
+// ---------- PV de résolution (2026-10-10) ----------
+// Généré à la clôture du vote et archivé automatiquement dans les
+// documents confidentiels du comité (sql/2026-10-10g). Contient l'en-tête
+// officiel (logo, mentions légales), le numéro, le texte, la composition
+// du comité à la clôture, le résultat et le détail nominatif des votes,
+// et les signatures de tous les membres.
+function numeroResolution(d) {
+  if (d.numero == null) return "—";
+  const an = d.cloture_le ? new Date(d.cloture_le).getFullYear() : new Date().getFullYear();
+  return `${an}-${String(d.numero).padStart(3, "0")}`;
+}
+async function exporterPvResolution({ d, votes, reunions, sujets, membres, association, L, lang, sortie = "telecharger" }) {
+  const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  const { jsPDF } = jsPDFmod;
+  const autoTable = autoTableMod.default || autoTableMod;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const M = 48;
+  const W = doc.internal.pageSize.getWidth() - 2 * M;
+  const T = pdfTexte;
+  const D = (iso) => (iso ? formatEventDateTime(iso, lang) : "—");
+  const accent = couleurAssociation(association);
+  const num = numeroResolution(d);
+  let y = await enTeteOfficiel(doc, association, { titre: `${L.res_title} - ${L.res_num.replace("{n}", num)}`, sousTitre: d.titre, marge: M });
+  doc.setFont("helvetica", "bolditalic"); doc.setFontSize(9); doc.setTextColor(0, 0, 0);
+  doc.text(T(L.pdf_confidential), M, y); y += 14;
+  const saut = (h) => { if (y + h > doc.internal.pageSize.getHeight() - 60) { doc.addPage(); y = 56; } };
+  const section = (titre) => {
+    saut(40); y += 10;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(0, 0, 0);
+    doc.text(T(titre).toUpperCase(), M, y);
+    doc.setDrawColor(...accent); doc.setLineWidth(1.2); doc.line(M, y + 5, M + W, y + 5);
+    y += 16; doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  };
+  const tableau = (head, body, opts = {}) => {
+    autoTable(doc, {
+      startY: y, head: head ? [head.map(T)] : undefined, body: body.map((r) => r.map(T)),
+      theme: head ? "grid" : "plain",
+      styles: { font: "helvetica", fontSize: 10, cellPadding: 5, textColor: [0, 0, 0], lineColor: [220, 224, 230], lineWidth: head ? 0.5 : 0 },
+      headStyles: { fillColor: accent, textColor: 255, fontStyle: "bold" },
+      columnStyles: head ? {} : { 0: { cellWidth: 160, fontStyle: "bold" } },
+      margin: { left: M, right: M, top: 56, bottom: 60 }, ...opts,
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  };
+  const reunion = reunions.find((r) => r.id === d.reunion_id);
+  const sujet = sujets.find((x) => x.id === d.sujet_id);
+  const resultat = L["dst_" + d.statut] || d.statut;
+
+  section(L.res_info);
+  tableau(null, [
+    [L.res_num.replace(" {n}", ""), num],
+    ...(reunion ? [[L.res_meeting, `${reunion.titre}${reunion.date_reunion ? " - " + D(reunion.date_reunion) : ""}`]] : []),
+    ...(sujet ? [[L.res_subject, sujet.titre]] : []),
+    [L.res_author, d.auteur_nom || "—"],
+    [L.res_opened, D(d.created_at)],
+    [L.res_closed, D(d.cloture_le)],
+    [L.res_diffusion, d.diffusion === "bureau" ? L.diff_bureau : L.diff_comite],
+  ]);
+
+  section(L.res_text);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(11.5);
+  const tl = doc.splitTextToSize(T(d.titre), W); saut(tl.length * 15); doc.text(tl, M, y + 4); y += tl.length * 15 + 4;
+  if (d.texte) {
+    doc.setFont("helvetica", "normal"); doc.setFontSize(10.5);
+    const lignes = doc.splitTextToSize(T(d.texte), W);
+    saut(lignes.length * 14); doc.text(lignes, M, y + 4, { lineHeightFactor: 1.35 }); y += lignes.length * 14 + 6;
+  }
+
+  const compo = Array.isArray(d.membres_cloture) && d.membres_cloture.length
+    ? d.membres_cloture
+    : membres.map((m) => ({ nom: m.nom, president: m.est_president }));
+  section(L.res_members.replace("{n}", String(compo.length)));
+  tableau([L.member_col, L.role_col], compo.map((m) => [m.nom || "—", m.president ? L.res_president : L.res_member]));
+
+  section(L.res_vote);
+  const votants = d.pour + d.contre + d.abstention;
+  tableau(null, [
+    [L.res_quorum, String(d.quorum)],
+    [L.res_votants, `${votants} / ${compo.length || d.nb_membres}`],
+    [L.v_pour, String(d.pour)], [L.v_contre, String(d.contre)], [L.v_abstention, String(d.abstention)],
+    [L.res_result, resultat],
+  ]);
+  const vd = votes.filter((v) => v.decision_id === d.id);
+  section(L.res_nominal);
+  const lignesVotes = compo.map((m) => {
+    const v = vd.find((x) => (x.votant_nom || "") === (m.nom || ""));
+    return [m.nom || "—", v ? L["v_" + v.choix] : L.res_no_vote, v ? D(v.created_at) : ""];
+  });
+  vd.filter((v) => !compo.some((m) => (m.nom || "") === (v.votant_nom || ""))).forEach((v) => lignesVotes.push([v.votant_nom || "—", L["v_" + v.choix], D(v.created_at)]));
+  tableau([L.member_col, L.res_result, L.res_date], lignesVotes);
+
+  doc.setFont("helvetica", "italic"); doc.setFontSize(9);
+  const mention = doc.splitTextToSize(T(L.res_mention), W); saut(mention.length * 12 + 6); doc.text(mention, M, y + 6); y += mention.length * 12 + 10;
+
+  // Signatures : un cadre par membre du comité à la clôture.
+  section(L.res_sign);
+  const BW = (W - 20) / 2, BH = 70;
+  compo.forEach((m, i) => {
+    if (i % 2 === 0) saut(BH + 12);
+    const bx = M + (i % 2) * (BW + 20), by = y;
+    doc.setDrawColor(200, 205, 212); doc.setLineWidth(0.6); doc.roundedRect(bx, by, BW, BH, 4, 4, "S");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(T(m.nom || "—"), bx + 10, by + 16, { maxWidth: BW - 20 });
+    doc.setFont("helvetica", "italic"); doc.setFontSize(8.5); doc.text(T(m.president ? L.res_president : L.res_member), bx + 10, by + 28);
+    doc.setDrawColor(0, 0, 0); doc.line(bx + 10, by + 52, bx + BW - 10, by + 52);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(T(L.res_signature), bx + 10, by + 63);
+    doc.text(T(`${L.res_date} : ____ / ____ / ________`), bx + BW - 10, by + 63, { align: "right" });
+    if (i % 2 === 1 || i === compo.length - 1) y += BH + 12;
+  });
+
+  piedsDePageOfficiels(doc, association, { marge: M, texte: `${L.pdf_confidential} - ${L.res_num.replace("{n}", num)}`, libellePage: (pg, n) => `${pg} / ${n}` });
+  const fichier = `PV_resolution_${num}.pdf`;
+  if (sortie === "blob") return { blob: doc.output("blob"), fichier, num };
+  doc.save(fichier);
+  return null;
+}
+
+// Archive le PV dans les documents du comité et le lie à la décision.
+// Renvoie true si ce PV est celui retenu (un autre membre a pu le faire
+// au même moment : le doublon est alors retiré).
+async function archiverPvResolution({ d, data, association, profile, L, lang }) {
+  const res = await exporterPvResolution({ d, votes: data.votes, reunions: data.reunions, sujets: data.sujets, membres: data.membres, association, L, lang, sortie: "blob" });
+  const chemin = `${profile.association_id}/resolutions/${Date.now()}_${res.fichier}`;
+  const { error: e1 } = await supabase.storage.from(BUCKET).upload(chemin, res.blob, { contentType: "application/pdf" });
+  if (e1) return false;
+  const { data: docRow, error: e2 } = await supabase.from("comite_documents").insert({
+    titre: L.res_doc_title.replace("{n}", res.num).replace("{titre}", d.titre), chemin, nom_fichier: res.fichier,
+    taille: res.blob.size, type_mime: "application/pdf", sujet_id: d.sujet_id || null, reunion_id: d.reunion_id || null,
+  }).select("id").single();
+  if (e2) { await supabase.storage.from(BUCKET).remove([chemin]); return false; }
+  const { data: lie } = await supabase.rpc("lier_pv_resolution", { p_id: d.id, p_document_id: docRow.id });
+  if (lie !== true) {
+    await supabase.from("comite_documents").delete().eq("id", docRow.id);
+    await supabase.storage.from(BUCKET).remove([chemin]);
+    return false;
+  }
+  return true;
 }
 
 // ---------- Documents ----------
@@ -879,6 +1053,24 @@ export default function ComiteRestreint({ profile, association }) {
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
 
+  // PV de résolution : dès qu'une décision est close (numérotée par la
+  // base — sql/2026-10-10g) sans PV archivé, le premier membre du comité
+  // qui ouvre la rubrique le génère et l'archive automatiquement.
+  const archivage = useRef(new Set());
+  useEffect(() => {
+    if (!acces?.membre) return;
+    const aFaire = data.decisions.filter((d) => d.statut !== "en_vote" && d.numero != null && !d.pv_document_id && !archivage.current.has(d.id));
+    if (!aFaire.length) return;
+    aFaire.forEach((d) => archivage.current.add(d.id));
+    (async () => {
+      let change = false;
+      for (const d of aFaire) {
+        try { if (await archiverPvResolution({ d, data, association, profile, L, lang })) change = true; } catch { /* nouvel essai à la prochaine ouverture */ }
+      }
+      if (change) load();
+    })();
+  }, [data, acces?.membre, association, profile, L, lang, load]);
+
   if (!acces) return <Container><Section><p>{t("loading")}</p></Section></Container>;
 
   const entete = (intro) => (
@@ -958,7 +1150,7 @@ export default function ComiteRestreint({ profile, association }) {
           <>
             {form === "decision" && <DecisionForm L={L} t={t} reunions={data.reunions} sujets={data.sujets} nbMembres={Math.max(data.membres.length, 1)} onDone={fermerForm} />}
             {data.decisions.length === 0 ? <p style={muted}>{L.no_decisions}</p>
-              : data.decisions.map((d) => <DecisionCard key={d.id} d={d} L={L} t={t} lang={lang} votes={data.votes} membres={data.membres} reunions={data.reunions} sujets={data.sujets} profile={profile} isPresident={isPresident} onChanged={load} />)}
+              : data.decisions.map((d) => <DecisionCard key={d.id} d={d} L={L} t={t} lang={lang} votes={data.votes} membres={data.membres} reunions={data.reunions} sujets={data.sujets} profile={profile} isPresident={isPresident} onChanged={load} association={association} documents={data.documents} />)}
           </>
         )}
 
