@@ -16,9 +16,10 @@
 // ce script pour le détail de ce choix de sécurité.
 // =====================================================================
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag } from "lucide-react";
+import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag, FileDown, Link2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED, formatEventDateTime } from "./shared";
+import { badgeUrl, randomUuid, qrDataUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 
 
 function goToLogin() {
@@ -371,6 +372,105 @@ function ProjectPublicPage({ projectId }) {
 // côté SQL (vitrine_active ET events.public_inscription). Complément
 // « modernisation Événements » (2026-09-30).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Badge QR d'un visiteur non adhérent (sql/2026-10-09c_badges_
+// inscriptions_publiques.sql) — affiché juste après l'inscription ou en
+// rouvrant le lien personnel (&badge=<jeton>). Le QR contient ce même
+// lien : le Bureau le scanne à l'entrée.
+// ---------------------------------------------------------------------
+const BADGE_TXT = {
+  fr: {
+    title: "Votre badge d'entrée",
+    intro: "Présentez ce code QR à l'entrée (sur votre téléphone ou imprimé).",
+    people: "{n} personnes",
+    pdf: "Enregistrer / imprimer (PDF)",
+    copy: "Copier le lien",
+    copied: "Lien copié",
+    link: "Gardez ce lien pour retrouver votre badge plus tard :",
+    checked: "Entrée enregistrée le {date}",
+    cancelled: "Cette inscription a été annulée.",
+    eventCancelled: "Cet événement a été annulé.",
+    missing: "Badge introuvable : vérifiez le lien reçu.",
+  },
+  en: {
+    title: "Your entry badge",
+    intro: "Show this QR code at the entrance (on your phone or printed).",
+    people: "{n} people",
+    pdf: "Save / print (PDF)",
+    copy: "Copy link",
+    copied: "Link copied",
+    link: "Keep this link to find your badge later:",
+    checked: "Checked in on {date}",
+    cancelled: "This registration has been cancelled.",
+    eventCancelled: "This event has been cancelled.",
+    missing: "Badge not found: please check the link you received.",
+  },
+};
+
+function VisitorBadge({ badge, token }) {
+  const { lang } = useLang();
+  const L = BADGE_TXT[lang === "en" ? "en" : "fr"];
+  const slug = new URLSearchParams(window.location.search).get("pub") || badge.association_slug;
+  const url = badgeUrl(slug, badge.event_id, token);
+  const [qr, setQr] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    qrDataUrl(url).then((d) => { if (!cancelled) setQr(d); }).catch(() => { /* QR indisponible : le lien reste affiché */ });
+    return () => { cancelled = true; };
+  }, [url]);
+
+  async function savePdf() {
+    setPdfBusy(true);
+    try {
+      await downloadBadgesPdf([{ ...badge, url, qr }], {
+        logoUrl: badge.association_logo_url, lang,
+        fileName: `badge_${safeFileName(badge.event_titre)}_${safeFileName(badge.nom)}.pdf`,
+      });
+    } finally { setPdfBusy(false); }
+  }
+  async function copyLink() {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { /* presse-papiers refusé : le lien reste lisible */ }
+  }
+
+  const inactive = badge.statut === "annulee" || badge.event_annule;
+  return (
+    <Card style={{ maxWidth: 480 }}>
+      <h3 style={{ fontSize: 15, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={16} color={TEAL} /> {L.title}</h3>
+      <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 14 }}>{L.intro}</p>
+      <div style={{ border: "1px solid #DDE1E8", borderRadius: 14, overflow: "hidden", opacity: inactive ? 0.55 : 1 }}>
+        <div style={{ background: "#1F3864", color: "white", padding: "10px 14px", display: "flex", alignItems: "center", gap: 10 }}>
+          {badge.association_logo_url && <img src={badge.association_logo_url} alt="" style={{ width: 30, height: 30, borderRadius: 7, objectFit: "cover", background: "white" }} />}
+          <span style={{ fontWeight: 700, fontSize: 13.5 }}>{badge.association_nom}</span>
+        </div>
+        <div style={{ display: "flex", gap: 14, padding: 14, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+            <div style={{ fontFamily: "Poppins, sans-serif", fontSize: 19, fontWeight: 700, color: "#141414", wordBreak: "break-word" }}>{badge.nom}</div>
+            {Number(badge.nb_personnes) > 1 && <div style={{ fontSize: 12.5, color: TEAL, fontWeight: 600, marginTop: 2 }}>{L.people.replace("{n}", String(badge.nb_personnes))}</div>}
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#1F3864", marginTop: 10 }}>{badge.event_titre}</div>
+            <div style={{ fontSize: 12, color: "#5B6270", marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}><CalendarDays size={13} /> {formatEventDateTime(badge.event_date_debut, lang)}</div>
+            {badge.event_lieu && <div style={{ fontSize: 12, color: "#5B6270", marginTop: 3, display: "flex", alignItems: "center", gap: 5 }}><MapPin size={13} /> {badge.event_lieu}</div>}
+          </div>
+          {qr ? <img src={qr} alt="QR" style={{ width: 150, height: 150, margin: "0 auto" }} /> : <div style={{ width: 150, height: 150, margin: "0 auto", background: "#F1F2F4", borderRadius: 8 }} />}
+        </div>
+      </div>
+      {badge.event_annule && <p style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.eventCancelled}</p>}
+      {badge.statut === "annulee" && <p style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.cancelled}</p>}
+      {badge.checkin_le && <p style={{ color: TEAL, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.checked.replace("{date}", formatEventDateTime(badge.checkin_le, lang))}</p>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+        <Btn onClick={savePdf} disabled={pdfBusy || !qr}><FileDown size={14} /> {L.pdf}</Btn>
+        <button type="button" onClick={copyLink} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(42,42,42,.18)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", color: TEAL, fontSize: 13 }}>
+          <Link2 size={14} /> {copied ? L.copied : L.copy}
+        </button>
+      </div>
+      <p style={{ fontSize: 11.5, color: "#5B6270", marginTop: 12, marginBottom: 4 }}>{L.link}</p>
+      <a href={url} style={{ fontSize: 11.5, color: "#1F3864", wordBreak: "break-all" }}>{url}</a>
+    </Card>
+  );
+}
+
 function EventPublicPage({ eventId }) {
   const { t, lang } = useLang();
   const [ev, setEv] = useState(undefined); // undefined = chargement, null = introuvable/non public
@@ -380,6 +480,23 @@ function EventPublicPage({ eventId }) {
   const [sendResult, setSendResult] = useState(null); // null | "ok" | error message
   // Anti-abus : voir useFormulaireDebuteLe en tête de fichier.
   const formulaireDebuteLe = useFormulaireDebuteLe();
+  // Badge QR du visiteur (sql/2026-10-09c_badges_inscriptions_publiques.sql) :
+  // jeton lu dans l'adresse (&badge=…) ou obtenu juste après l'inscription.
+  const [badgeToken, setBadgeToken] = useState(() => new URLSearchParams(window.location.search).get("badge"));
+  const [badge, setBadge] = useState(null);
+  const [badgeMissing, setBadgeMissing] = useState(false);
+
+  useEffect(() => {
+    if (!badgeToken) return;
+    let cancelled = false;
+    supabase.rpc("badge_inscription_publique", { p_token: badgeToken }).then(({ data, error }) => {
+      if (cancelled) return;
+      const row = Array.isArray(data) ? data[0] : data;
+      setBadgeMissing(!!error || !row);
+      setBadge(error ? null : row || null);
+    });
+    return () => { cancelled = true; };
+  }, [badgeToken]);
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("public_event_detail").select("*").eq("event_id", eventId).maybeSingle();
@@ -395,8 +512,12 @@ function EventPublicPage({ eventId }) {
     e.preventDefault();
     if (!form.nom.trim() || !form.courriel.trim()) return;
     setSending(true); setSendResult(null);
+    // Id tiré au hasard ici : seul ce navigateur le connaît, il permet de
+    // récupérer le jeton du badge juste après l'envoi (le visiteur n'a
+    // aucun droit de lecture sur les inscriptions).
+    const inscriptionId = randomUuid();
     const { error } = await supabase.from("event_public_registrations").insert({
-      association_id: ev.association_id ?? null, event_id: eventId,
+      id: inscriptionId, association_id: ev.association_id ?? null, event_id: eventId,
       nom: form.nom.trim(), courriel: form.courriel.trim(), telephone: form.telephone.trim() || null,
       nb_personnes: Number(form.nb_personnes) || 1, message: form.message.trim() || null,
       piege: form.piege || null, formulaire_debute_le: formulaireDebuteLe(),
@@ -405,10 +526,29 @@ function EventPublicPage({ eventId }) {
     if (error) { setSendResult(publicFormError(error, t)); return; }
     setSendResult("ok");
     setForm({ nom: "", courriel: "", telephone: "", nb_personnes: 1, message: "", piege: "" });
+    // Badge : tant que le script SQL des badges n'est pas exécuté, l'appel
+    // échoue et on garde simplement le message de confirmation.
+    const { data: token, error: badgeError } = await supabase.rpc("recuperer_badge_apres_inscription", { p_inscription_id: inscriptionId });
+    if (!badgeError && token) {
+      const params = new URLSearchParams(window.location.search);
+      params.set("badge", token);
+      window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+      setBadgeToken(token);
+    }
   }
 
   if (ev === undefined) {
     return <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center" }}><p style={{ color: "#9AA2B5" }}>{t("load_generic")}</p></div>;
+  }
+  // Événement retiré de la vitrine (ou annulé) mais badge valide : on
+  // affiche quand même le badge, qui porte sa propre mention d'annulation.
+  if (ev === null && badge) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, fontFamily: "Inter, -apple-system, sans-serif" }}>
+        <PublicHeader nom={badge.association_nom} logoUrl={badge.association_logo_url} />
+        <Container><Section><VisitorBadge badge={badge} token={badgeToken} /></Section></Container>
+      </div>
+    );
   }
   if (ev === null) {
     return (
@@ -459,7 +599,10 @@ function EventPublicPage({ eventId }) {
           </>
         )}
 
-        <Card style={{ maxWidth: 480 }}>
+        {badge && <div style={{ marginBottom: 24 }}><VisitorBadge badge={badge} token={badgeToken} /></div>}
+        {badgeMissing && <p style={{ color: RED, fontSize: 12.5, marginBottom: 16, maxWidth: 480 }}>{BADGE_TXT[lang === "en" ? "en" : "fr"].missing}</p>}
+
+        {!badge && <Card style={{ maxWidth: 480 }}>
           <h3 style={{ fontSize: 15, marginBottom: 4 }}>{t("pub_event_register_title")}</h3>
           {sendResult === "ok" ? (
             <p style={{ color: TEAL, fontWeight: 600, fontSize: 13.5, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={16} /> {t("pub_event_register_success")}</p>
@@ -480,7 +623,7 @@ function EventPublicPage({ eventId }) {
               <Btn type="submit" disabled={sending}><Send size={14} /> {t("pub_event_register_submit")}</Btn>
             </form>
           )}
-        </Card>
+        </Card>}
       </Section></Container>
     </div>
   );
