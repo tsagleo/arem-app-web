@@ -6,7 +6,7 @@ import {
  Bell, BellOff, FileText, History, Settings, Printer, LogOut, Download, Eye, EyeOff, Trash2, Pencil,
   Landmark, Rss, Kanban, CalendarDays, Gift, Vote, Building2, KeyRound, Copy, RefreshCw, CreditCard, X, ChevronDown, ChevronLeft,
   MoreVertical, Ban, Receipt, FileSignature, Upload, BarChart3, Wallet, Flower2, Gavel, QrCode, Search, Sparkles, ArrowRight, ChevronRight, UserCog,
-  Globe, Layers, Car, Video, Briefcase, Dices, ShieldHalf, GraduationCap,
+  Globe, Layers, Car, Video, Briefcase, Dices, ShieldHalf, GraduationCap, ShoppingBasket,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
@@ -64,6 +64,7 @@ const Emploi = lazyModule(() => import("./Emploi.jsx"));
 const Tirages = lazyModule(() => import("./Tirages.jsx"));
 const ComiteRestreint = lazyModule(() => import("./ComiteRestreint.jsx"));
 const Jeunesse = lazyModule(() => import("./Jeunesse.jsx"));
+const AchatsGroupes = lazyModule(() => import("./AchatsGroupes.jsx"));
 
 // =====================================================================
 // CONSTANTES
@@ -114,7 +115,7 @@ const RUBRIQUE_KEY_MAP = {
 const BUREAU_CONFIGURABLE_MODULES = [
   "membres", "inscription", "tontine", "collation", "urgence", "secours",
   "finances", "paiements_interac", "gouvernance", "vieassociative", "presences",
-  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages", "jeunesse",
+  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages", "jeunesse", "achats",
   "funeraire", "sanctions", "comite", "dons", "emprunts", "documents", "annonces",
   "journal", "demandes_suppression", "acces", "config",
 ];
@@ -127,7 +128,7 @@ const BUREAU_MODULE_LABEL_KEYS = {
   finances: "nav_finances", paiements_interac: "nav_interac", gouvernance: "nav_governance",
   vieassociative: "nav_community", presences: "nav_presences", projets: "nav_projects",
   evenements: "nav_events", covoiturage: "nav_carpool", reunions: "nav_meetings",
-  emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", jeunesse: "nav_jeunesse", funeraire: "nav_funeraire",
+  emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", jeunesse: "nav_jeunesse", achats: "nav_achats", funeraire: "nav_funeraire",
   sanctions: "nav_sanctions", comite: "nav_comite", dons: "nav_donations", emprunts: "nav_loans",
   documents: "nav_documents", annonces: "nav_announcements", journal: "nav_activity",
   demandes_suppression: "nav_del_requests", acces: "nav_access", config: "nav_config",
@@ -277,6 +278,7 @@ const JRN_TABLE_LABEL_KEYS = {
   jeunesse_jumelages: "jrn_table_jeunesse_jumelages", jeunesse_seances: "jrn_table_jeunesse_seances",
   jeunesse_ressources: "jrn_table_jeunesse_ressources", jeunesse_bourses: "jrn_table_jeunesse_bourses",
   jeunesse_candidatures: "jrn_table_jeunesse_candidatures",
+  achats_groupes: "jrn_table_achats_groupes", achats_souscriptions: "jrn_table_achats_souscriptions", achats_mouvements: "jrn_table_achats_mouvements",
   election_candidats: "jrn_table_election_candidats", election_votes: "jrn_table_election_votes",
   election_comite: "jrn_table_election_comite", election_procurations: "jrn_table_election_procurations",
   tontine_seances: "jrn_table_tontine_seances", tontine_presences: "jrn_table_tontine_presences",
@@ -2459,6 +2461,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     { id: "sondages", label: t("nav_polls"), roles: ["bureau", "responsable", "adherent"], keywords: ["vote", "consultation"] },
     { id: "tirages", label: t("nav_draws"), roles: ["bureau", "responsable", "adherent"], keywords: ["tirage", "hasard", "ordre de passage", "tontine", "direct"] },
     { id: "jeunesse", label: t("nav_jeunesse"), roles: ["bureau", "responsable", "adherent"], keywords: ["tutorat", "mentor", "étudiant", "école", "bourse", "devoirs", "campus", "jeunes"] },
+    { id: "achats", label: t("nav_achats"), roles: ["bureau", "responsable", "adherent"], keywords: ["achat groupé", "coopérative", "prix de gros", "commande", "colis", "conteneur", "envoi", "ristourne"] },
     { id: "funeraire", label: t("nav_funeraire"), roles: ["bureau", "responsable", "adherent"], keywords: ["décès", "deuil", "condoléances"] },
     { id: "sanctions", label: t("nav_sanctions"), roles: ["bureau", "adherent"], keywords: ["avertissement", "suspension", "discipline"] },
     { id: "comite", label: t("nav_comite"), roles: ["bureau"], keywords: ["comité restreint", "comité exécutif", "confidentiel", "décision"] },
@@ -2509,7 +2512,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isPremiumPlan, profile.association_id]);
-  const PREMIUM_FEATURE_IDS =["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "jeunesse", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
+  const PREMIUM_FEATURE_IDS =["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "jeunesse", "achats", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
   // Bouton « Passer à Premium » des écrans verrouillés : bascule sur
   // Configuration (où vit la carte « Votre forfait ») puis y fait défiler
   // la page — fonctionne qu'on parte d'un autre onglet ou qu'on soit déjà
@@ -4050,6 +4053,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
         { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
         { id: "tirages", label: t("nav_draws"), icon: Dices },
         { id: "jeunesse", label: t("nav_jeunesse"), icon: GraduationCap },
+        { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
         { id: "annonces", label: t("nav_announcements"), icon: Bell },
         { id: "projets", label: t("nav_projects"), icon: Kanban },
         { id: "covoiturage", label: t("nav_carpool"), icon: Car },
@@ -4076,6 +4080,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
       { id: "jeunesse", label: t("nav_jeunesse"), icon: GraduationCap },
+      { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
       { id: "projets", label: t("nav_projects"), icon: Kanban },
       { id: "covoiturage", label: t("nav_carpool"), icon: Car },
@@ -4094,6 +4099,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
       { id: "jeunesse", label: t("nav_jeunesse"), icon: GraduationCap },
+      { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
       { id: "covoiturage", label: t("nav_carpool"), icon: Car },
       { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
@@ -6774,6 +6780,10 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       {tab === "jeunesse" && (isBureau || isResponsable || isAdherent) && (
         isPremiumPlan ? <Jeunesse profile={profile} isBureau={isBureau} />
           : <Container><Section><PremiumLocked label={t("nav_jeunesse")} onUpgrade={goToForfait} features={[t("premium_feat_jeunesse_1"), t("premium_feat_jeunesse_2"), t("premium_feat_jeunesse_3")]} /></Section></Container>
+      )}
+      {tab === "achats" && (isBureau || isResponsable || isAdherent) && (
+        isPremiumPlan ? <AchatsGroupes profile={profile} isBureau={isBureau} association={association} />
+          : <Container><Section><PremiumLocked label={t("nav_achats")} onUpgrade={goToForfait} features={[t("premium_feat_achats_1"), t("premium_feat_achats_2"), t("premium_feat_achats_3")]} /></Section></Container>
       )}
       {tab === "funeraire" && (isBureau || isResponsable || isAdherent) && (
         isPremiumPlan ? <Funeraire profile={profile} isBureau={isBureau} isPresident={isPresident} association={association} />
