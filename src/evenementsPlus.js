@@ -284,6 +284,17 @@ function dessinerBadgeMembre(doc, x, y, w, h, m, ctx) {
       colX = x + pad + photoSize + 10;
     } catch { /* photo illisible */ }
   }
+  // Pas de photo sur la fiche (ou photo illisible) : on garde l'emplacement,
+  // avec les initiales, pour que tous les badges aient la même présentation
+  // — adhérents comme membres du bureau. Demande de l'utilisateur (2026-10-10).
+  if (colX === x + pad) {
+    const initiales = String(m.nom || "?").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+    doc.setFillColor(242, 243, 246); doc.setDrawColor(...accent); doc.setLineWidth(1);
+    doc.rect(x + pad, top, photoSize, photoSize, "FD");
+    doc.setTextColor(...accent); doc.setFont("helvetica", "bold"); doc.setFontSize(18);
+    doc.text(pdfTexte(initiales), x + pad + photoSize / 2, top + photoSize / 2 + 6, { align: "center" });
+    colX = x + pad + photoSize + 10;
+  }
   const colW = qrX - colX - 8;
   let ty = top + 12;
   doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
