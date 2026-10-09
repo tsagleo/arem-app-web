@@ -3,49 +3,33 @@
 // Développé par Omnia Trade Solutions
 // =====================================================================
 import { useState, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { Vote, Users2, Landmark, Printer, Trash2 } from "lucide-react";
+import { Vote, Users2, Landmark, Trash2 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import {
-  Section, Container, Card, Btn, Field, Table, td, RuleBox, Banner, inputStyle, useLang, RED, SignatureLine, friendlyError, OrgLegalSubline, datetimeLocalToISO, formatEventDateTime,
+  Section, Container, Card, Btn, Field, Table, td, Banner, inputStyle, useLang, RED, friendlyError,
 } from "./shared";
+import Elections from "./Elections";
 
 export default function Gouvernance({ profile, isBureau, association }) {
   const [info, setInfo] = useState(null);
   const [boardMembers, setBoardMembers] = useState([]);
   const [members, setMembers] = useState([]);
-  const [elections, setElections] = useState([]);
-  const [candidats, setCandidats] = useState([]);
-  // Vote secret (sql/2026-10-09a) : plus aucun accès aux bulletins. On lit
-  // seulement l'état agrégé de chaque élection (participation, et voix une
-  // fois close) et ses propres émargements (pour savoir où l'on a voté).
-  const [etats, setEtats] = useState({}); // election_id → { close, inscrits, votants, votants_par_poste, voix }
-  const [mesEmargements, setMesEmargements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
   const { t, lang } = useLang();
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [{ data: gi }, { data: bm }, { data: mem, error: memErr }, { data: el }, { data: cand }, { data: et }, { data: em }] = await Promise.all([
+    const [{ data: gi }, { data: bm }, { data: mem, error: memErr }] = await Promise.all([
       supabase.from("governance_info").select("*").eq("association_id", profile.association_id).maybeSingle(),
       supabase.from("board_members").select("*").eq("association_id", profile.association_id),
       // Pas de filtre association_id ici : comme pour la liste des adhérents ailleurs dans
       // l'application, on s'appuie sur les politiques RLS de Supabase pour le scoping —
       // un filtre client-side redondant ici empêchait la liste de se charger.
-      supabase.from("members").select("id,nom,statut").order("nom"),
-      supabase.from("elections").select("*").eq("association_id", profile.association_id).order("date_debut", { ascending: false }),
-      supabase.from("election_candidats").select("*"),
-      supabase.rpc("etat_elections"),
-      profile.member_id
-        ? supabase.from("election_emargements").select("election_id, poste").eq("member_id", profile.member_id)
-        : Promise.resolve({ data: [] }),
+      supabase.from("members").select("id,nom,statut,photo_url").order("nom"),
     ]);
    if (memErr) setErrorMsg(friendlyError(memErr, t));
    setInfo(gi); setBoardMembers(bm || []); setMembers((mem || []).filter((m) => m.statut !== "Supprimé"));
-    setElections(el || []); setCandidats(cand || []);
-    setEtats(Object.fromEntries((et || []).map((x) => [x.election_id, x])));
-    setMesEmargements(em || []);
     setLoading(false);
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
@@ -76,93 +60,6 @@ export default function Gouvernance({ profile, isBureau, association }) {
     if (!error) setBoardMembers((p) => p.filter((b) => b.id !== id));
     else setErrorMsg(friendlyError(error, t));
   }
-
-  // ---------- Élections ----------
-  const [newElection, setNewElection] = useState({ titre: "", description: "", date_debut: "", date_fin: "" });
-  async function createElection() {
-    if (!newElection.titre || !newElection.date_debut || !newElection.date_fin) return;
-    if (!window.confirm(t("gov_confirm_create_election").replace("{titre}", newElection.titre))) return;
-    const { data, error } = await supabase.from("elections").insert({ association_id: profile.association_id, ...newElection, date_debut: datetimeLocalToISO(newElection.date_debut), date_fin: datetimeLocalToISO(newElection.date_fin), statut: "ouverte" }).select().single();
-    if (!error) { setElections((p) => [data, ...p]); setNewElection({ titre: "", description: "", date_debut: "", date_fin: "" }); }
-  }
-  const [candDraft, setCandDraft] = useState({}); // { electionId: {member_id, poste_vise} }
-  async function addCandidat(electionId) {
-    const d = candDraft[electionId];
-    if (!d?.member_id) return;
-    const nomCandidat = members.find((m) => m.id === d.member_id)?.nom || "";
-    if (!window.confirm(t("gov_confirm_add_candidate").replace("{nom}", nomCandidat))) return;
-    const { data, error } = await supabase.from("election_candidats").insert({ election_id: electionId, member_id: d.member_id, poste_vise: d.poste_vise || "" }).select().single();
-    if (!error) { setCandidats((p) => [...p, data]); setCandDraft((p) => ({ ...p, [electionId]: {} })); }
-  }
-  async function deleteCandidat(candidatId) {
-    if (!window.confirm(t("gov_confirm_delete_candidat"))) return;
-    // Les bulletins de ce candidat sont supprimés en cascade par la base
-    // (election_bulletins.candidat_id … on delete cascade).
-    const { error } = await supabase.from("election_candidats").delete().eq("id", candidatId);
-    if (!error) {
-      setCandidats((p) => p.filter((c) => c.id !== candidatId));
-      load();
-    } else setErrorMsg(friendlyError(error, t));
-  }
-  async function deleteElection(electionId) {
-    if (!window.confirm(t("gov_confirm_delete_election"))) return;
-    // Émargements et bulletins sont supprimés en cascade par la base ; on
-    // retire les candidats, puis l'élection elle-même.
-    const { error: candErr } = await supabase.from("election_candidats").delete().eq("election_id", electionId);
-    if (candErr) { setErrorMsg(friendlyError(candErr, t)); return; }
-    const { error } = await supabase.from("elections").delete().eq("id", electionId);
-    if (!error) {
-      setElections((p) => p.filter((e) => e.id !== electionId));
-      setCandidats((p) => p.filter((c) => c.election_id !== electionId));
-      setPvElectionId((p) => (p === electionId ? null : p));
-    } else setErrorMsg(friendlyError(error, t));
-  }
-  async function voteFor(electionId, candidatId) {
-   if (!profile.member_id) { setErrorMsg(t("gov_not_linked")); return; }
-    const nomCandidat = members.find((m) => m.id === candidats.find((c) => c.id === candidatId)?.member_id)?.nom || "";
-    if (!window.confirm(t("gov_confirm_vote").replace("{nom}", nomCandidat))) return;
-    const { error } = await supabase.rpc("voter_election", { p_election_id: electionId, p_candidat_id: candidatId });
-    if (error) { setErrorMsg(error.message.includes("déjà voté") ? t("gov_already_voted") : friendlyError(error, t)); return; }
-    load();
-  }
-  // Voix d'un candidat : connues seulement une fois l'élection close
-  // (null pendant le scrutin — aucun résultat ne doit influencer les votants).
-  function voteCount(electionId, candidatId) {
-    const voix = etats[electionId]?.voix;
-    return voix ? Number(voix[candidatId] || 0) : null;
-  }
-  function hasVoted(electionId, poste) {
-    return mesEmargements.some((m) => m.election_id === electionId && m.poste === (poste || ""));
-  }
-
-  // Statut "effectif" : une élection encore marquée "ouverte" en base mais dont la
-  // date de fermeture est dépassée doit être traitée comme fermée immédiatement à
-  // l'affichage, même avant que la mise à jour automatique en base (ci-dessous) ait fini.
-  function effectiveStatut(el) {
-    if (el.statut === "ouverte" && el.date_fin && new Date(el.date_fin) < new Date()) return "fermée";
-    return el.statut;
-  }
-
-  // ---------- Clôture automatique des élections échues ----------
-  // Dès que la date de fermeture d'une élection est dépassée, son statut passe
-  // automatiquement de "ouverte" à "fermée" en base (une seule écriture, sans
-  // action requise du Bureau). Cet effet se relance à chaque changement de la
-  // liste des élections mais converge après une seule passe : une fois le statut
-  // mis à "fermée", l'élection ne fait plus partie du filtre "expired".
-  useEffect(() => {
-    const expired = elections.filter((el) => el.statut === "ouverte" && el.date_fin && new Date(el.date_fin) < new Date());
-    if (expired.length === 0) return;
-    (async () => {
-      for (const el of expired) {
-        const { data, error } = await supabase.from("elections").update({ statut: "fermée" }).eq("id", el.id).select().single();
-        if (!error && data) setElections((p) => p.map((e) => (e.id === el.id ? data : e)));
-      }
-    })();
-  }, [elections]);
-
-  // ---------- Procès-verbal (résultats) ----------
-  const [pvElectionId, setPvElectionId] = useState(null);
-  const pvElection = elections.find((el) => el.id === pvElectionId) || null;
 
   if (loading) return <Container><Section><p>{t("loading")}</p></Section></Container>;
 
@@ -224,206 +121,9 @@ export default function Gouvernance({ profile, isBureau, association }) {
         </Table>
       </div>
 
-      {/* Élections */}
+      {/* Élections : comité électoral, calendrier, vote secret (voir Elections.jsx) */}
       <h3 style={{ fontSize: 15, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><Vote size={16} /> {t("gov_elections_title")}</h3>
-      {isBureau && (
-        <Card style={{ marginBottom: 20, maxWidth: 520 }}>
-          <h4 style={{ fontSize: 13, marginBottom: 10 }}>{t("gov_create_election")}</h4>
-          <Field label={t("gov_title_field")}><input style={inputStyle} value={newElection.titre} onChange={(e) => setNewElection({ ...newElection, titre: e.target.value })} /></Field>
-          <Field label={t("description")}><input style={inputStyle} value={newElection.description} onChange={(e) => setNewElection({ ...newElection, description: e.target.value })} /></Field>
-          <Field label={t("gov_opening")}><input type="datetime-local" style={inputStyle} value={newElection.date_debut} onChange={(e) => setNewElection({ ...newElection, date_debut: e.target.value })} /></Field>
-          <Field label={t("gov_closing")}><input type="datetime-local" style={inputStyle} value={newElection.date_fin} onChange={(e) => setNewElection({ ...newElection, date_fin: e.target.value })} /></Field>
-          <Btn onClick={createElection}>{t("gov_create_election_btn")}</Btn>
-        </Card>
-      )}
-
-      {elections.map((el) => {
-        const cands = candidats.filter((c) => c.election_id === el.id);
-        const etat = etats[el.id];
-        const close = etat ? etat.close : effectiveStatut(el) !== "ouverte";
-        const totalVotes = close ? cands.reduce((s, c) => s + (voteCount(el.id, c.id) || 0), 0) : 0;
-        return (
-          <Card key={el.id} style={{ marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h4 style={{ fontSize: 14 }}>{el.titre}</h4>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 11, color: effectiveStatut(el) === "ouverte" ? "#1F8A5C" : "#686F7D", fontWeight: 700, textTransform: "uppercase" }}>{effectiveStatut(el)}</span>
-                {isBureau && (
-                  <button onClick={() => deleteElection(el.id)} title={t("gov_delete_election_btn")} style={{ fontSize: 11, fontWeight: 600, color: RED, background: "none", border: `1px solid ${RED}`, borderRadius: 999, padding: "2px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <Trash2 size={11} /> {t("gov_delete_election_btn")}
-                  </button>
-                )}
-              </div>
-            </div>
-            <p style={{ fontSize: 12.5, color: "#5B6270" }}>{el.description}</p>
-            <RuleBox>{t("gov_from")} {formatEventDateTime(el.date_debut, lang)} {t("gov_to")} {formatEventDateTime(el.date_fin, lang)}</RuleBox>
-
-            <div style={{ marginBottom: 12 }}>
-              <Btn variant="outline" onClick={() => setPvElectionId(el.id)} style={{ padding: "5px 12px", fontSize: 12 }}>
-                <Printer size={13} /> {t("gov_pv_btn")}
-              </Btn>
-            </div>
-
-            {isBureau && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-                <select style={{ ...inputStyle, width: 200 }} value={candDraft[el.id]?.member_id || ""} onChange={(e) => setCandDraft((p) => ({ ...p, [el.id]: { ...p[el.id], member_id: e.target.value } }))}>
-                 <option value="">{t("gov_add_candidate")}</option>
-                  {members.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
-                </select>
-                <input style={{ ...inputStyle, width: 160 }} placeholder={t("gov_target_position")} value={candDraft[el.id]?.poste_vise || ""} onChange={(e) => setCandDraft((p) => ({ ...p, [el.id]: { ...p[el.id], poste_vise: e.target.value } }))} />
-                <Btn onClick={() => addCandidat(el.id)}>Ajouter</Btn>
-              </div>
-            )}
-
-            {etat && (
-              <p style={{ fontSize: 12.5, color: "#4A5468", margin: "0 0 8px" }}>
-                {t("gov_participation").replace("{v}", String(etat.votants)).replace("{i}", String(etat.inscrits))}
-                {!close && <> · <i>{t("gov_results_after_close")}</i></>}
-              </p>
-            )}
-           <Table head={[t("gov_col_candidate"), t("gov_col_target_position"), t("gov_col_votes"), t("gov_col_pct"), ""]}>
-              {cands.map((c) => {
-                const v = voteCount(el.id, c.id);
-                const pct = v != null && totalVotes > 0 ? Math.round((v / totalVotes) * 100) : 0;
-                const dejaVote = hasVoted(el.id, c.poste_vise);
-                return (
-                  <tr key={c.id}>
-                    <td style={{ ...td, fontWeight: 600, color: "var(--primary)" }}>{members.find((m) => m.id === c.member_id)?.nom || "—"}</td>
-                    <td style={td}>{c.poste_vise}</td>
-                    <td style={td}>{v == null ? "—" : v}</td>
-                    <td style={td}>{v == null ? "—" : `${pct}%`}</td>
-                    <td style={{ ...td, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                      {effectiveStatut(el) === "ouverte" && !dejaVote && profile.member_id && (
-                        <Btn onClick={() => voteFor(el.id, c.id)} style={{ padding: "5px 12px", fontSize: 12 }}>{t("gov_vote_btn")}</Btn>
-                      )}
-                      {effectiveStatut(el) === "ouverte" && dejaVote && (
-                        <span style={{ fontSize: 11.5, color: "#1F8A5C", fontWeight: 600 }}>{t("gov_voted_for_post")}</span>
-                      )}
-                      {isBureau && (
-                        <button onClick={() => deleteCandidat(c.id)} style={{ fontSize: 11, fontWeight: 600, color: RED, background: "none", border: `1px solid ${RED}`, borderRadius: 999, padding: "2px 8px", cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          <Trash2 size={11} /> {t("gov_delete_btn")}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </Table>
-          </Card>
-        );
-      })}
-      {elections.length === 0 && <p style={{ color: "#686F7D", fontStyle: "italic" }}>{t("no_data")}</p>}
-
-      {pvElection && (
-        <ElectionPVModal
-          election={pvElection}
-          candidats={candidats.filter((c) => c.election_id === pvElection.id)}
-          etat={etats[pvElection.id]}
-          members={members}
-          association={association}
-          effectiveStatutLabel={effectiveStatut(pvElection)}
-          t={t} lang={lang}
-          onClose={() => setPvElectionId(null)}
-        />
-      )}
+      <Elections profile={profile} isBureau={isBureau} association={association} members={members} t={t} lang={lang} />
     </Section></Container>
-  );
-}
-
-// =====================================================================
-// Procès-verbal (PV) des résultats d'une élection — vue imprimable isolée,
-// reprenant le pattern déjà utilisé pour les décharges (DechargeModal dans
-// App.jsx) : un portail plein écran dont seul le contenu est visible à
-// l'impression (le reste du DOM est masqué via `body > *:not(.pv-print-root)`).
-// =====================================================================
-function ElectionPVModal({ election, candidats, etat, members, association, effectiveStatutLabel, t, lang, onClose }) {
-  const nameOf = (memberId) => members.find((m) => m.id === memberId)?.nom || "—";
-  // Vote secret : les voix ne sont connues qu'après la clôture (etat.voix
-  // est null avant) ; le PV affiche alors 0 et la mention « pas de vote ».
-  const voteCount = (candidatId) => Number(etat?.voix?.[candidatId] || 0);
-  const totalVotes = candidats.reduce((s, c) => s + voteCount(c.id), 0);
-  const totalVoters = etat?.votants ?? 0;
-
-  const postes = [...new Set(candidats.map((c) => c.poste_vise || t("gov_pv_no_position")))];
-  const todayFormatted = new Date().toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA");
-  const generatedOn = new Date().toLocaleString(lang === "en" ? "en-CA" : "fr-CA");
-
-  return createPortal(
-    <div className="pv-print-root" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }} onClick={onClose}>
-      <style>{`
-        @media print {
-          body > *:not(.pv-print-root) { display: none !important; }
-          .pv-print-root { position: static !important; background: white !important; padding: 0 !important; display: block !important; }
-          .pv-no-print { display: none !important; }
-          .pv-card { box-shadow: none !important; max-height: none !important; overflow: visible !important; width: 100% !important; max-width: 100% !important; }
-        }
-      `}</style>
-      <div className="pv-card" style={{ background: "white", borderRadius: 12, padding: 32, maxWidth: 640, width: "94%", maxHeight: "88vh", overflowY: "auto" }} onClick={(e) => e.stopPropagation()}>
-        <div className="pv-no-print" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <h3 style={{ fontSize: 16, margin: 0 }}>{t("gov_pv_title")}</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18 }}>✕</button>
-        </div>
-
-        <h3 style={{ marginBottom: 4 }}>{association?.nom}</h3>
-        <OrgLegalSubline association={association} />
-        <h4 style={{ marginBottom: 4, fontWeight: 600 }}>{t("gov_pv_title")}</h4>
-        <p style={{ fontSize: 12, color: "#686F7D", marginBottom: 16 }}>{t("gov_pv_generated_on")} {generatedOn}</p>
-
-        <h4 style={{ fontSize: 15, marginBottom: 4 }}>{election.titre}</h4>
-        {election.description && <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 8 }}>{election.description}</p>}
-        <RuleBox>
-          {t("gov_from")} {formatEventDateTime(election.date_debut, lang)} {t("gov_to")} {formatEventDateTime(election.date_fin, lang)}
-          <br />{t("gov_pv_status")} : <b>{effectiveStatutLabel}</b>
-        </RuleBox>
-
-        <p style={{ fontSize: 13, marginTop: 12 }}>
-          <b>{t("gov_pv_total_votes")}</b> : {totalVotes} &nbsp;•&nbsp; <b>{t("gov_pv_total_voters")}</b> : {totalVoters}
-        </p>
-
-        {postes.map((poste) => {
-          const postCands = candidats.filter((c) => (c.poste_vise || t("gov_pv_no_position")) === poste);
-          const postTotal = postCands.reduce((s, c) => s + voteCount(c.id), 0);
-          const maxV = postTotal > 0 ? Math.max(...postCands.map((c) => voteCount(c.id))) : 0;
-          const winners = postTotal > 0 ? postCands.filter((c) => voteCount(c.id) === maxV) : [];
-          return (
-            <div key={poste} style={{ marginTop: 18 }}>
-              <h5 style={{ fontSize: 13, marginBottom: 8 }}>{poste}</h5>
-              <Table head={[t("gov_col_candidate"), t("gov_col_votes"), t("gov_col_pct"), ""]}>
-                {postCands.map((c) => {
-                  const v = voteCount(c.id);
-                  const pct = postTotal > 0 ? Math.round((v / postTotal) * 100) : 0;
-                  const isWinner = postTotal > 0 && v === maxV;
-                  return (
-                    <tr key={c.id}>
-                      <td style={{ ...td, fontWeight: 600, color: "var(--primary)" }}>{nameOf(c.member_id)}</td>
-                      <td style={td}>{v}</td>
-                      <td style={td}>{pct}%</td>
-                      <td style={{ ...td, fontWeight: 700, color: "#1F8A5C" }}>{isWinner ? (winners.length > 1 ? t("gov_pv_tie") : t("gov_pv_winner")) : ""}</td>
-                    </tr>
-                  );
-                })}
-              </Table>
-              {postTotal === 0 && <p style={{ fontSize: 12, color: "#686F7D", fontStyle: "italic", marginTop: 4 }}>{t("gov_pv_no_votes")}</p>}
-            </div>
-          );
-        })}
-        {postes.length === 0 && <p style={{ color: "#686F7D", fontStyle: "italic", marginTop: 12 }}>{t("no_data")}</p>}
-
-        <div style={{ marginTop: 50 }}>
-          <p style={{ fontSize: 11.5, color: "#5B6270", fontStyle: "italic", marginBottom: 18 }}>{t("gov_pv_esignature_notice")}</p>
-          <div style={{ display: "flex", gap: 40, flexWrap: "wrap" }}>
-            <SignatureLine label={t("gov_pv_signature_president")} printClass="pv-no-print" t={t} />
-            <SignatureLine label={t("gov_pv_signature_secretaire")} printClass="pv-no-print" t={t} />
-          </div>
-        </div>
-        <div style={{ fontSize: 12, color: "#5B6270", marginTop: 6 }}>{t("date")} : <b>{todayFormatted}</b></div>
-
-        <div className="pv-no-print" style={{ display: "flex", gap: 10, marginTop: 30 }}>
-          <Btn onClick={() => window.print()}><Printer size={14} /> {t("fin_print_btn")}</Btn>
-          <Btn variant="outline" onClick={onClose}>{t("tont_decharge_close")}</Btn>
-        </div>
-      </div>
-    </div>,
-    document.body
   );
 }

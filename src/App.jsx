@@ -265,6 +265,7 @@ const JRN_TABLE_LABEL_KEYS = {
   donations: "jrn_table_donations", documents: "jrn_table_documents", announcements: "jrn_table_announcements",
   posts: "jrn_table_posts", elections: "jrn_table_elections", tirages: "jrn_table_tirages",
   election_candidats: "jrn_table_election_candidats", election_votes: "jrn_table_election_votes",
+  election_comite: "jrn_table_election_comite", election_procurations: "jrn_table_election_procurations",
   tontine_seances: "jrn_table_tontine_seances", tontine_presences: "jrn_table_tontine_presences",
   collation_presences: "jrn_table_collation_presences", board_members: "jrn_table_board_members",
   governance_info: "jrn_table_governance_info", associations: "jrn_table_associations",

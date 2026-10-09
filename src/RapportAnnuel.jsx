@@ -50,6 +50,7 @@ import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBo
 const EXPORT_TABLES = [
   "subscriptions", "profiles", "members", "board_members", "governance_info",
   "elections", "election_candidats", "election_emargements",
+  "election_comite", "election_procurations", "election_departages",
   "donations", "loans", "loan_repayments",
   "fonds_depenses", "fonds_recouvrements",
   "tontine_seances", "tontine_presences", "collation_presences",
@@ -449,7 +450,10 @@ export default function RapportAnnuel({ association, isPresident }) {
         .map((b) => ({ ...b, nomMembre: memberNameById[b.member_id] || "—" }));
       const electionsAnnee = (elections || []).filter((e) => inYear(e.date_fin) || inYear(e.date_debut));
       const electionResults = electionsAnnee.map((e) => {
-        const cands = (electionCandidats || []).filter((c) => c.election_id === e.id);
+        // Seules les candidatures validées par le comité électoral figurent
+        // sur le bulletin (sql 2026-10-09a_…_comite) ; les anciennes, sans
+        // statut, restent comptées.
+        const cands = (electionCandidats || []).filter((c) => c.election_id === e.id && (c.statut_candidature || "validee") === "validee");
         const results = cands.map((c) => ({
           nom: memberNameById[c.member_id] || "—",
           poste: c.poste_vise || "",
