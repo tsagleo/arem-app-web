@@ -835,10 +835,11 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
         <AideDemandeAdhesion />
         {err && <p style={{ color: RED, fontSize: 13, marginBottom: 16 }}>{err}</p>}
         <form onSubmit={handleSubmit}>
+          <p style={{ fontSize: 12, color: "#5B6270", margin: "0 0 14px" }}><span style={{ color: "#C0392B" }}>*</span> {t("champ_obligatoire")}</p>
           <h3 style={{ fontSize: 14, marginBottom: 12 }}>{t("join_complete_section_fiche")}</h3>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 20 }}>
-            <Field label={t("mem_email")}><input style={inputStyle} value={form.courriel} onChange={(e) => setForm((p) => ({ ...p, courriel: e.target.value }))} /></Field>
-            <Field label={t("mem_phone")}><input type="tel" style={inputStyle} value={form.telephone} onChange={(e) => setForm((p) => ({ ...p, telephone: e.target.value }))} placeholder={t("mem_phone_placeholder")} /></Field>
+            <Field label={t("mem_email")}><input type="email" required style={inputStyle} value={form.courriel} onChange={(e) => setForm((p) => ({ ...p, courriel: e.target.value }))} /></Field>
+            <Field label={t("mem_phone")}><input type="tel" required style={inputStyle} value={form.telephone} onChange={(e) => setForm((p) => ({ ...p, telephone: e.target.value }))} placeholder={t("mem_phone_placeholder")} /></Field>
             <Field label={t("mem_sexe")}>
               <select style={inputStyle} value={form.sexe} onChange={(e) => setForm((p) => ({ ...p, sexe: e.target.value }))}>
                 <option value="">{t("mem_sexe_placeholder")}</option>
@@ -846,8 +847,8 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
                 <option value="F">{t("mem_sexe_f")}</option>
               </select>
             </Field>
-            <Field label={t("mem_birthdate")}><input type="date" style={inputStyle} value={form.dateNaissance} onChange={(e) => setForm((p) => ({ ...p, dateNaissance: e.target.value }))} /></Field>
-            <Field label={t("mem_address")}><input style={inputStyle} value={form.quartier} onChange={(e) => setForm((p) => ({ ...p, quartier: e.target.value }))} /></Field>
+            <Field label={t("mem_birthdate")}><input type="date" required style={inputStyle} value={form.dateNaissance} onChange={(e) => setForm((p) => ({ ...p, dateNaissance: e.target.value }))} /></Field>
+            <Field label={t("mem_address")}><input required style={inputStyle} value={form.quartier} onChange={(e) => setForm((p) => ({ ...p, quartier: e.target.value }))} /></Field>
             <Field label={t("mem_skills")}><input style={inputStyle} value={form.competences} onChange={(e) => setForm((p) => ({ ...p, competences: e.target.value }))} placeholder={t("mem_skills_placeholder")} /></Field>
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, marginBottom: 24, cursor: "pointer" }}>
@@ -857,7 +858,7 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
 
           <h3 style={{ fontSize: 14, marginBottom: 6 }}>{t("join_complete_section_identite")}</h3>
           <Field label={t("join_complete_identite_label")}>
-            <input type="file" accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, pieceIdentiteFile: e.target.files?.[0] || null }))} />
+            <input type="file" required accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, pieceIdentiteFile: e.target.files?.[0] || null }))} />
           </Field>
           <p style={{ fontSize: 11.5, color: "#686F7D", marginTop: -8, marginBottom: 24 }}>{t("join_complete_identite_help")}</p>
 
@@ -874,11 +875,11 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
           {form.paiementMode !== "non_paye" && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginTop: 10, marginBottom: 10 }}>
               <Field label={t("join_complete_paiement_montant_label")}>
-                <input type="number" style={inputStyle} value={form.paiementMontant} onChange={(e) => setForm((p) => ({ ...p, paiementMontant: e.target.value }))} />
+                <input type="number" required min="0" step="0.01" style={inputStyle} value={form.paiementMontant} onChange={(e) => setForm((p) => ({ ...p, paiementMontant: e.target.value }))} />
               </Field>
               {form.paiementMode === "fichier" && (
                 <Field label={t("join_complete_paiement_fichier_label")}>
-                  <input type="file" accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, paiementFile: e.target.files?.[0] || null }))} />
+                  <input type="file" required accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, paiementFile: e.target.files?.[0] || null }))} />
                 </Field>
               )}
             </div>
@@ -1100,7 +1101,7 @@ async function handleResetPassword() {
             <Field label={t("auth_org_name")}><input required style={inputStyle} value={nomAssociation} onChange={(e) => setNomAssociation(e.target.value)} /></Field>
             <Field label={t("auth_full_name")}><input required style={inputStyle} value={nomComplet} onChange={(e) => setNomComplet(e.target.value)} /></Field>
             <Field label={t("auth_email")}><input type="email" required style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-            <Field label={t("auth_password")}>
+            <Field label={t("auth_password")} required>
               <div style={{ position: "relative" }}>
                 <input type={showPassword ? "text" : "password"} required minLength={6} style={{ ...inputStyle, paddingRight: 40 }} value={password} onChange={(e) => setPassword(e.target.value)} />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#686F7D", padding: 0 }}>

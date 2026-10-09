@@ -3,7 +3,7 @@
 // communs à tous les modules de la plateforme.
 // Développé par Omnia Trade Solutions
 // =====================================================================
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, Children } from "react";
 import { MessageCircle } from "lucide-react";
 
 // Palette « Saphir profond & or antique » (harmonisation du 2026-10-06 —
@@ -481,8 +481,12 @@ export function StatCard({ label, value, accent, icon: Icon }) {
 </Card>
   );
 }
-export function Field({ label, children }) {
-  return <div style={{ marginBottom: 14 }}><label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--primary)", marginBottom: 5 }}>{label}</label>{children}</div>;
+// 2026-10-10 (demandé par l'utilisateur) : astérisque sur les champs
+// obligatoires — automatique dès que le champ direct porte `required`,
+// ou forcé avec <Field required>.
+export function Field({ label, children, required }) {
+  const obligatoire = required ?? Children.toArray(children).some((c) => c?.props?.required);
+  return <div style={{ marginBottom: 14 }}><label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--primary)", marginBottom: 5 }}>{label}{obligatoire && <span aria-hidden="true" style={{ color: "#C0392B", marginLeft: 3 }}>*</span>}</label>{children}</div>;
 }
 // "color" et "colorScheme" ajoutés (2026-09-29, suite Vie associative —
 // zone d'écriture du fil d'actualité) : ce style ne fixait jamais la
@@ -2034,6 +2038,7 @@ mem_motif_exclusion: "Exclusion", mem_motif_other: "Autre", mem_delete_btn: "Sup
     load_generic: "Chargement…", load_space: "Chargement de votre espace…",
     load_profile_missing: "Profil introuvable. Contactez votre administrateur.",
     load_profile_error: "Impossible de charger votre profil :",
+    champ_obligatoire: "Champ obligatoire",
     blocked_title: "Compte bloqué",
     blocked_text: "L'accès à ce compte a été bloqué par le bureau de votre association. Contactez-le pour en savoir plus.",
     load_superadmin: "Chargement du panneau super-admin…", load_data: "Chargement des données…",
@@ -3693,6 +3698,7 @@ mem_motif_exclusion: "Exclusion", mem_motif_other: "Other", mem_delete_btn: "Del
     load_generic: "Loading…", load_space: "Loading your space…",
     load_profile_missing: "Profile not found. Contact your administrator.",
     load_profile_error: "Unable to load your profile:",
+    champ_obligatoire: "Required field",
     blocked_title: "Account blocked",
     blocked_text: "Access to this account has been blocked by your association's board. Contact them for more information.",
     load_superadmin: "Loading super-admin panel…", load_data: "Loading data…",
@@ -5380,6 +5386,7 @@ footer_dev_by: "Platform developed by",
     load_space: "جارٍ تحميل مساحتك…",
     load_profile_missing: "الملف الشخصي غير موجود. تواصل مع مسؤول جمعيتك.",
     load_profile_error: "تعذّر تحميل ملفك الشخصي:",
+    champ_obligatoire: "حقل إلزامي",
     blocked_title: "الحساب محظور",
     blocked_text: "تم حظر الوصول إلى هذا الحساب من قبل مكتب جمعيتك. تواصل معه لمعرفة المزيد.",
     load_superadmin: "جارٍ تحميل لوحة المشرف العام…",
