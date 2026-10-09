@@ -391,6 +391,7 @@ const BADGE_TXT = {
     checked: "Entrée enregistrée le {date}",
     cancelled: "Cette inscription a été annulée.",
     eventCancelled: "Cet événement a été annulé.",
+    expired: "Ce badge n'est plus valable : il a été créé pour cet événement uniquement, qui est terminé.",
     missing: "Badge introuvable : vérifiez le lien reçu.",
   },
   en: {
@@ -404,6 +405,7 @@ const BADGE_TXT = {
     checked: "Checked in on {date}",
     cancelled: "This registration has been cancelled.",
     eventCancelled: "This event has been cancelled.",
+    expired: "This badge is no longer valid: it was issued for this event only, which is over.",
     missing: "Badge not found: please check the link you received.",
   },
 };
@@ -416,6 +418,14 @@ function VisitorBadge({ badge, token }) {
   const [qr, setQr] = useState(null);
   const [copied, setCopied] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  // Badge créé pour la circonstance : plus valable après l'événement
+  // (sql/2026-10-10e — même règle que le scan à l'entrée).
+  const [expired, setExpired] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("badge_public_expire", { p_token: token }).then(({ data, error }) => { if (!cancelled && !error) setExpired(data === true); });
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -436,7 +446,7 @@ function VisitorBadge({ badge, token }) {
     try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { /* presse-papiers refusé : le lien reste lisible */ }
   }
 
-  const inactive = badge.statut === "annulee" || badge.event_annule;
+  const inactive = badge.statut === "annulee" || badge.event_annule || expired;
   return (
     <Card style={{ maxWidth: 480 }}>
       <h3 style={{ fontSize: 15, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}><CheckCircle2 size={16} color={TEAL} /> {L.title}</h3>
@@ -458,6 +468,7 @@ function VisitorBadge({ badge, token }) {
         </div>
       </div>
       {badge.event_annule && <p style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.eventCancelled}</p>}
+      {expired && !badge.event_annule && <p style={{ color: "#5B6270", fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.expired}</p>}
       {badge.statut === "annulee" && <p style={{ color: RED, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.cancelled}</p>}
       {badge.checkin_le && <p style={{ color: TEAL, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{L.checked.replace("{date}", formatEventDateTime(badge.checkin_le, lang))}</p>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
