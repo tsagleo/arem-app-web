@@ -48,6 +48,11 @@ const TXT = {
     pdf_attendance: "Présence et quorum", pdf_agenda: "Ordre du jour", pdf_res: "Résolutions", pdf_result: "Résultat",
     pdf_minutes: "Compte rendu", pdf_list: "Liste des membres présents ou représentés",
     pdf_sign: "Signatures", pdf_president: "Président(e) de séance", pdf_secretary: "Secrétaire de séance", pdf_signature: "Signature",
+    sig_title: "Signatures électroniques du PV", sig_as_president: "Signer comme président(e) de séance", sig_as_secretary: "Signer comme secrétaire de séance",
+    sig_confirm: "Je soussigné(e) {nom}, {role}, atteste l'exactitude du procès-verbal de « {titre} » (présences, résolutions, compte rendu). Signer électroniquement ?",
+    sig_signed: "signé par {nom} le {d}", sig_wait: "en attente", sig_needed: "Le président et le secrétaire de séance doivent signer électroniquement avant la clôture.",
+    sig_locked: "PV signé : présences, résolutions et compte rendu sont figés.",
+    pdf_esign: "Signé électroniquement par {nom} le {d}", pdf_ref: "réf. {h}", pdf_manual: "Signature manuscrite (facultative)",
     // Organigramme
     org_board: "Bureau", org_resp: "Responsables de rubriques", org_none: "Aucun membre du bureau en fonction.",
     org_vitrine: "Afficher aussi les responsables de rubriques sur la vitrine publique",
@@ -84,6 +89,11 @@ const TXT = {
     pdf_attendance: "Attendance and quorum", pdf_agenda: "Agenda", pdf_res: "Resolutions", pdf_result: "Result",
     pdf_minutes: "Minutes", pdf_list: "Members present or represented",
     pdf_sign: "Signatures", pdf_president: "Chair of the meeting", pdf_secretary: "Secretary of the meeting", pdf_signature: "Signature",
+    sig_title: "Electronic signatures of the minutes", sig_as_president: "Sign as chair of the meeting", sig_as_secretary: "Sign as secretary of the meeting",
+    sig_confirm: "I, {nom}, {role}, certify that the minutes of \"{titre}\" are accurate (attendance, resolutions, minutes). Sign electronically?",
+    sig_signed: "signed by {nom} on {d}", sig_wait: "pending", sig_needed: "The chair and the secretary of the meeting must sign electronically before closing.",
+    sig_locked: "Minutes signed: attendance, resolutions and minutes are locked.",
+    pdf_esign: "Electronically signed by {nom} on {d}", pdf_ref: "ref. {h}", pdf_manual: "Handwritten signature (optional)",
     org_board: "Board", org_resp: "Section managers", org_none: "No board member in office.",
     org_vitrine: "Also show section managers on the public page",
     org_vitrine_help: "The current board is already shown on the public page (if enabled).",
@@ -221,7 +231,7 @@ export function DocumentsGouvernance({ profile, isBureau }) {
 // =====================================================================
 // Assemblées générales
 // =====================================================================
-async function exporterPvAg({ ag, presences, members, association, P, lang, sortie = "telecharger" }) {
+async function exporterPvAg({ ag, presences, members, signatures = [], association, P, lang, sortie = "telecharger" }) {
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
@@ -273,12 +283,17 @@ async function exporterPvAg({ ag, presences, members, association, P, lang, sort
   section(P.pdf_sign);
   saut(90); y += 6;
   const BW = (W - 20) / 2;
-  [P.pdf_president, P.pdf_secretary].forEach((role, i) => {
+  [["president", P.pdf_president], ["secretaire", P.pdf_secretary]].forEach(([code, role], i) => {
     const bx = M + i * (BW + 20);
-    doc.setDrawColor(200, 205, 212); doc.setLineWidth(0.6); doc.roundedRect(bx, y, BW, 74, 4, 4, "S");
+    const sg = signatures.find((x) => x.role === code);
+    doc.setDrawColor(200, 205, 212); doc.setLineWidth(0.6); doc.roundedRect(bx, y, BW, 80, 4, 4, "S");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(T(role), bx + 10, y + 16);
-    doc.setDrawColor(0, 0, 0); doc.line(bx + 10, y + 56, bx + BW - 10, y + 56);
-    doc.setFont("helvetica", "italic"); doc.setFontSize(8); doc.text(T(P.pdf_signature), bx + 10, y + 67);
+    if (sg) {
+      doc.setFontSize(8.5); doc.text(doc.splitTextToSize(T(fill(P.pdf_esign, { nom: sg.nom || "", d: formatEventDateTime(sg.signe_le, lang) })), BW - 20).slice(0, 2), bx + 10, y + 32);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.text(T(fill(P.pdf_ref, { h: String(sg.empreinte || "").slice(0, 16) })), bx + 10, y + 52);
+    }
+    doc.setDrawColor(0, 0, 0); doc.line(bx + 10, y + 62, bx + BW - 10, y + 62);
+    doc.setFont("helvetica", "italic"); doc.setFontSize(7.5); doc.text(T(P.pdf_manual), bx + 10, y + 72);
   });
   piedsDePageOfficiels(doc, association, { marge: M, texte: ag.titre, libellePage: (p, n) => `${p} / ${n}` });
   const fichier = `PV_${String(ag.titre || "AG").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "")}.pdf`;
@@ -287,7 +302,7 @@ async function exporterPvAg({ ag, presences, members, association, P, lang, sort
   return null;
 }
 
-function CarteAssemblee({ ag, presences, members, isBureau, association, profile, onChanged }) {
+function CarteAssemblee({ ag, presences, members, signatures = [], isBureau, association, profile, onChanged }) {
   const { t, lang, P } = useT();
   const [ouvert, setOuvert] = useState(ag.statut !== "cloturee");
   const [cr, setCr] = useState(ag.compte_rendu || "");
@@ -297,7 +312,18 @@ function CarteAssemblee({ ag, presences, members, isBureau, association, profile
   const pres = presences.filter((x) => x.mode === "present").length;
   const rep = presences.filter((x) => x.mode === "represente").length;
   const q = ag.quorum_pct != null ? Math.ceil(actifs.length * Number(ag.quorum_pct) / 100) : null;
-  const modifiable = isBureau && ag.statut !== "cloturee";
+  // Contenu figé dès la première signature (sql/2026-10-10i).
+  const modifiable = isBureau && ag.statut !== "cloturee" && signatures.length === 0;
+  const sigDe = (role) => signatures.find((x) => x.role === role);
+  const signeTout = !!sigDe("president") && !!sigDe("secretaire");
+  async function signer(role) {
+    const libelle = role === "president" ? P.pdf_president : P.pdf_secretary;
+    if (!window.confirm(fill(P.sig_confirm, { nom: profile.nom_complet || "", role: libelle, titre: ag.titre }))) return;
+    if (cr !== (ag.compte_rendu || "")) { const ok = await maj({ compte_rendu: cr }); if (!ok) return; }
+    const { error } = await supabase.rpc("signer_pv_assemblee", { p_id: ag.id, p_role: role });
+    if (error) { alert(msgErr(error, t, P)); return; }
+    onChanged();
+  }
   const enSeance = ag.statut === "convoquee" || ag.statut === "tenue";
   const resolutions = Array.isArray(ag.resolutions) ? ag.resolutions : [];
   const stColor = { preparation: "#B7791F", convoquee: "#2B6CB0", tenue: TEAL, cloturee: "#4A5468" }[ag.statut];
@@ -332,8 +358,8 @@ function CarteAssemblee({ ag, presences, members, isBureau, association, profile
     if (!window.confirm(P.ag_close_confirm)) return;
     setBusy(true);
     try {
-      await maj({ compte_rendu: cr });
-      const out = await exporterPvAg({ ag: { ...ag, compte_rendu: cr }, presences, members, association, P, lang, sortie: "blob" });
+      if (cr !== (ag.compte_rendu || "")) await maj({ compte_rendu: cr });
+      const out = await exporterPvAg({ ag: { ...ag, compte_rendu: cr }, presences, members, signatures, association, P, lang, sortie: "blob" });
       const path = await deposerFichier(profile.association_id, out.blob, out.fichier);
       const dateAg = ag.date_ag ? new Date(ag.date_ag) : new Date();
       const pad = (n) => String(n).padStart(2, "0");
@@ -372,7 +398,7 @@ function CarteAssemblee({ ag, presences, members, isBureau, association, profile
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {isBureau && ag.statut === "preparation" && <Btn style={small} onClick={convoquer}><Megaphone size={13} /> {P.ag_convoke}</Btn>}
             {isBureau && ag.statut === "convoquee" && <Btn variant="outline" style={small} onClick={() => maj({ statut: "tenue" })}><CheckCircle2 size={13} /> {P.ag_held}</Btn>}
-            <Btn variant="outline" style={small} onClick={() => exporterPvAg({ ag: { ...ag, compte_rendu: cr }, presences, members, association, P, lang }).catch((e) => alert(friendlyError(e, t)))}><FileDown size={13} /> {P.ag_pv}</Btn>
+            <Btn variant="outline" style={small} onClick={() => exporterPvAg({ ag: { ...ag, compte_rendu: cr }, presences, members, signatures, association, P, lang }).catch((e) => alert(friendlyError(e, t)))}><FileDown size={13} /> {P.ag_pv}</Btn>
             {ag.pv_document_id && <Btn variant="outline" style={small} onClick={ouvrirPv}><FileText size={13} /> {P.ag_pv_open}</Btn>}
             {isBureau && ag.statut !== "cloturee" && <button onClick={supprimer} style={{ background: "none", border: `1px solid ${RED}`, color: RED, borderRadius: 999, fontSize: 11, padding: "2px 8px", cursor: "pointer" }}><Trash2 size={11} /> {P.ag_delete}</button>}
           </div>
@@ -436,7 +462,34 @@ function CarteAssemblee({ ag, presences, members, isBureau, association, profile
             </div>
           )}
 
-          {/* Compte rendu et clôture */}
+          {/* Signatures électroniques du PV puis clôture */}
+          {(ag.statut === "tenue" || ag.statut === "cloturee") && (
+            <div style={{ padding: 10, borderRadius: 8, background: "#F8FAFB" }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>✍️ {P.sig_title}</div>
+              {[["president", P.pdf_president, P.sig_as_president], ["secretaire", P.pdf_secretary, P.sig_as_secretary]].map(([code, libelle, bouton]) => {
+                const sg = sigDe(code);
+                return (
+                  <div key={code} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5, marginBottom: 4 }}>
+                    {sg ? <CheckCircle2 size={13} color={TEAL} /> : <Clock size={13} color="#B7791F" />}
+                    <b>{libelle}</b>
+                    <span style={{ color: sg ? TEAL : "#B7791F" }}>{sg ? fill(P.sig_signed, { nom: sg.nom || "", d: formatEventDateTime(sg.signe_le, lang) }) : P.sig_wait}</span>
+                    {!sg && isBureau && ag.statut === "tenue" && !signatures.some((x) => x.profile_id === profile.id) && (
+                      <Btn style={small} onClick={() => signer(code)}>{bouton}</Btn>
+                    )}
+                  </div>
+                );
+              })}
+              {signatures.length > 0 && ag.statut !== "cloturee" && <p style={{ ...muted, margin: "4px 0 0" }}>{P.sig_locked}</p>}
+              {ag.statut === "tenue" && isBureau && (
+                <div style={{ marginTop: 8 }}>
+                  {!signeTout && <p style={{ fontSize: 12, color: "#B7791F", margin: "0 0 6px" }}>{P.sig_needed}</p>}
+                  <Btn style={small} disabled={busy || !signeTout} onClick={cloturer}><FileDown size={13} /> {P.ag_close}</Btn>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Compte rendu */}
           {(enSeance || ag.compte_rendu) && (
             <div>
               <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{P.ag_minutes}</div>
@@ -445,7 +498,6 @@ function CarteAssemblee({ ag, presences, members, isBureau, association, profile
                   <textarea style={{ ...inputStyle, minHeight: 110 }} value={cr} onChange={(e) => setCr(e.target.value)} />
                   <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                     <Btn variant="outline" style={small} onClick={() => maj({ compte_rendu: cr })}>{P.ag_save}</Btn>
-                    {ag.statut === "tenue" && <Btn style={small} disabled={busy} onClick={cloturer}><FileDown size={13} /> {P.ag_close}</Btn>}
                   </div>
                 </>
               ) : <p style={{ fontSize: 13, whiteSpace: "pre-wrap", margin: 0 }}>{ag.compte_rendu}</p>}
@@ -461,14 +513,17 @@ export function Assemblees({ profile, isBureau, association, members }) {
   const { t, P } = useT();
   const [ags, setAgs] = useState([]);
   const [pres, setPres] = useState([]);
+  const [sigs, setSigs] = useState([]);
   const [err, setErr] = useState("");
   const [form, setForm] = useState(null);
 
   const load = useCallback(async () => {
-    const [{ data: a, error }, { data: p }] = await Promise.all([
+    const [{ data: a, error }, { data: p }, sg] = await Promise.all([
       supabase.from("assemblees").select("*").eq("association_id", profile.association_id).order("date_ag", { ascending: false, nullsFirst: true }),
       supabase.from("assemblee_presences").select("*").eq("association_id", profile.association_id),
+      supabase.from("assemblee_signatures").select("*").eq("association_id", profile.association_id),
     ]);
+    setSigs(sg.error ? [] : sg.data || []);
     if (error) { setErr(msgErr(error, t, P)); return; }
     setErr(""); setAgs(a || []); setPres(p || []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -513,7 +568,7 @@ export function Assemblees({ profile, isBureau, association, members }) {
       )}
       {ags.length === 0 && !err && <p style={{ fontSize: 13, color: "#9AA2B5", fontStyle: "italic" }}>{P.ag_none}</p>}
       {ags.map((ag) => (
-        <CarteAssemblee key={ag.id} ag={ag} presences={pres.filter((x) => x.assemblee_id === ag.id)} members={members} isBureau={isBureau} association={association} profile={profile} onChanged={load} />
+        <CarteAssemblee key={ag.id} ag={ag} presences={pres.filter((x) => x.assemblee_id === ag.id)} signatures={sigs.filter((x) => x.assemblee_id === ag.id)} members={members} isBureau={isBureau} association={association} profile={profile} onChanged={load} />
       ))}
     </div>
   );

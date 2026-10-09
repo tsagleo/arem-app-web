@@ -114,6 +114,12 @@ const TXT = {
     pdf_president: "Président(e)", pdf_secretary: "Secrétaire de séance",
     pdf_generated: "Document généré le {date}",
     member_col: "Nom", role_col: "Rôle",
+    sig_title: "Signatures électroniques du PV", sig_btn: "Signer électroniquement (décharge)",
+    sig_confirm: "Je soussigné(e) {nom}, membre du comité restreint, atteste avoir pris connaissance du procès-verbal de la résolution « {titre} » et en approuver le contenu (résultat et détail des votes). Signer électroniquement ?",
+    sig_signed_on: "Signé le {d}", sig_pending: "En attente", sig_wait: "En attente de {n} signature(s) électronique(s) avant consignation",
+    sig_valid: "PV validé : signé par tous les membres, consigné et archivé", sig_me: "Votre signature est attendue",
+    pdf_esign: "Signé électroniquement le {d}", pdf_ref: "depuis son compte - réf. {h}", pdf_manual: "Signature manuscrite (facultative)",
+    pdf_esign_wait: "Signature électronique en attente",
     res_pv_btn: "PV de la résolution (PDF)", res_open: "Ouvrir le PV archivé", res_archived: "PV archivé dans les documents du comité",
     res_title: "Procès-verbal de résolution", res_num: "Résolution n° {n}",
     res_info: "Informations", res_meeting: "Réunion", res_subject: "Sujet", res_author: "Proposée par",
@@ -208,6 +214,12 @@ const TXT = {
     pdf_president: "President", pdf_secretary: "Recording secretary",
     pdf_generated: "Generated on {date}",
     member_col: "Name", role_col: "Role",
+    sig_title: "Electronic signatures of the minutes", sig_btn: "Sign electronically (discharge)",
+    sig_confirm: "I, {nom}, member of the executive committee, certify that I have read the minutes of the resolution \"{titre}\" and approve their content (result and votes). Sign electronically?",
+    sig_signed_on: "Signed on {d}", sig_pending: "Pending", sig_wait: "Waiting for {n} electronic signature(s) before filing",
+    sig_valid: "Minutes validated: signed by all members, recorded and filed", sig_me: "Your signature is awaited",
+    pdf_esign: "Electronically signed on {d}", pdf_ref: "from their own account - ref. {h}", pdf_manual: "Handwritten signature (optional)",
+    pdf_esign_wait: "Electronic signature pending",
     res_pv_btn: "Resolution minutes (PDF)", res_open: "Open filed minutes", res_archived: "Minutes filed in the committee documents",
     res_title: "Resolution minutes", res_num: "Resolution no. {n}",
     res_info: "Information", res_meeting: "Meeting", res_subject: "Topic", res_author: "Proposed by",
@@ -692,7 +704,7 @@ function DecisionForm({ L, t, reunions, sujets, nbMembres, onDone }) {
   );
 }
 
-function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile, isPresident, lectureSeule, onChanged, association, documents = [] }) {
+function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile, isPresident, lectureSeule, onChanged, association, documents = [], signatures = [] }) {
   const [busy, setBusy] = useState(false);
   const mesVotes = votes.filter((v) => v.decision_id === d.id);
   const monVote = mesVotes.find((v) => v.profile_id === profile.id);
@@ -763,9 +775,40 @@ function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile
         </p>
       )}
 
+      {!lectureSeule && !enVote && (() => {
+        const sigs = signatairesResolution(d, membres);
+        const manque = signaturesManquantes(d, membres, signatures);
+        const moi = sigs.find((m) => m.profile_id === profile.id);
+        const moiSigne = moi && signatureDe(signatures, d, moi);
+        return (
+          <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: "#F8FAFB" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>{L.sig_title}</div>
+            {sigs.map((m, i) => {
+              const sg = signatureDe(signatures, d, m);
+              return (
+                <div key={i} style={{ fontSize: 12.5, display: "flex", gap: 6, alignItems: "center" }}>
+                  {sg ? <CheckCircle2 size={13} color={TEAL} /> : <span style={{ width: 13, height: 13, borderRadius: "50%", border: "1.5px solid #B7791F", display: "inline-block" }} />}
+                  <b>{m.nom}</b>
+                  <span style={{ color: sg ? TEAL : "#B7791F" }}>{sg ? L.sig_signed_on.replace("{d}", formatEventDateTime(sg.signe_le, lang)) : L.sig_pending}</span>
+                </div>
+              );
+            })}
+            {moi && !moiSigne && (
+              <button style={{ ...smallBtn, marginTop: 8, background: TEAL, color: "white", borderColor: "transparent", fontWeight: 600 }}
+                onClick={() => rpc("signer_pv_resolution", { p_id: d.id }, L.sig_confirm.replace("{nom}", moi.nom || "").replace("{titre}", d.titre))}>
+                ✍️ {L.sig_btn}
+              </button>
+            )}
+            <p style={{ ...muted, margin: "8px 0 0", fontWeight: 600, color: manque === 0 && d.pv_document_id ? TEAL : "#B7791F" }}>
+              {manque === 0 && d.pv_document_id ? `✓ ${L.sig_valid}` : manque > 0 ? L.sig_wait.replace("{n}", String(manque)) : ""}
+            </p>
+          </div>
+        );
+      })()}
+
       {!lectureSeule && !enVote && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12, alignItems: "center" }}>
-          <button style={smallBtn} onClick={() => exporterPvResolution({ d, votes, reunions, sujets, membres, association, L, lang }).catch((e) => alert(friendlyError(e, t)))}><FileDown size={13} /> {L.res_pv_btn}</button>
+          <button style={smallBtn} onClick={() => exporterPvResolution({ d, votes, reunions, sujets, membres, signatures, association, L, lang }).catch((e) => alert(friendlyError(e, t)))}><FileDown size={13} /> {L.res_pv_btn}</button>
           {d.pv_document_id && (() => {
             const archive = documents.find((x) => x.id === d.pv_document_id);
             return archive ? (
@@ -788,6 +831,19 @@ function DecisionCard({ d, L, t, lang, votes, membres, reunions, sujets, profile
   );
 }
 
+// ---------- Signatures électroniques du PV (sql/2026-10-10i) ----------
+function signatairesResolution(d, membres) {
+  return Array.isArray(d.membres_cloture) && d.membres_cloture.length
+    ? d.membres_cloture
+    : membres.map((m) => ({ profile_id: m.profile_id, nom: m.nom, president: m.est_president }));
+}
+function signatureDe(signatures, d, m) {
+  return signatures.find((x) => x.decision_id === d.id && ((m.profile_id && x.profile_id === m.profile_id) || (!m.profile_id && x.nom === m.nom)));
+}
+function signaturesManquantes(d, membres, signatures) {
+  return signatairesResolution(d, membres).filter((m) => !signatureDe(signatures, d, m)).length;
+}
+
 // ---------- PV de résolution (2026-10-10) ----------
 // Généré à la clôture du vote et archivé automatiquement dans les
 // documents confidentiels du comité (sql/2026-10-10g). Contient l'en-tête
@@ -799,7 +855,7 @@ function numeroResolution(d) {
   const an = d.cloture_le ? new Date(d.cloture_le).getFullYear() : new Date().getFullYear();
   return `${an}-${String(d.numero).padStart(3, "0")}`;
 }
-async function exporterPvResolution({ d, votes, reunions, sujets, membres, association, L, lang, sortie = "telecharger" }) {
+async function exporterPvResolution({ d, votes, reunions, sujets, membres, signatures = [], association, L, lang, sortie = "telecharger" }) {
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
@@ -891,10 +947,19 @@ async function exporterPvResolution({ d, votes, reunions, sujets, membres, assoc
     doc.setDrawColor(200, 205, 212); doc.setLineWidth(0.6); doc.roundedRect(bx, by, BW, BH, 4, 4, "S");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(T(m.nom || "—"), bx + 10, by + 16, { maxWidth: BW - 20 });
     doc.setFont("helvetica", "italic"); doc.setFontSize(8.5); doc.text(T(m.president ? L.res_president : L.res_member), bx + 10, by + 28);
-    doc.setDrawColor(0, 0, 0); doc.line(bx + 10, by + 52, bx + BW - 10, by + 52);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(T(L.res_signature), bx + 10, by + 63);
-    doc.text(T(`${L.res_date} : ____ / ____ / ________`), bx + BW - 10, by + 63, { align: "right" });
+    const sg = signatureDe(signatures, d, m);
+    if (sg) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8.5);
+      doc.text(T(L.pdf_esign.replace("{d}", D(sg.signe_le))), bx + 10, by + 40);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+      doc.text(T(L.pdf_ref.replace("{h}", String(sg.empreinte || "").slice(0, 16))), bx + 10, by + 48);
+    } else {
+      doc.setFont("helvetica", "italic"); doc.setFontSize(8);
+      doc.text(T(L.pdf_esign_wait), bx + 10, by + 42);
+    }
+    doc.setDrawColor(0, 0, 0); doc.line(bx + 10, by + 56, bx + BW - 10, by + 56);
+    doc.setFont("helvetica", "italic"); doc.setFontSize(7.5);
+    doc.text(T(L.pdf_manual), bx + 10, by + 65);
     if (i % 2 === 1 || i === compo.length - 1) y += BH + 12;
   });
 
@@ -909,7 +974,7 @@ async function exporterPvResolution({ d, votes, reunions, sujets, membres, assoc
 // Renvoie true si ce PV est celui retenu (un autre membre a pu le faire
 // au même moment : le doublon est alors retiré).
 async function archiverPvResolution({ d, data, association, profile, L, lang }) {
-  const res = await exporterPvResolution({ d, votes: data.votes, reunions: data.reunions, sujets: data.sujets, membres: data.membres, association, L, lang, sortie: "blob" });
+  const res = await exporterPvResolution({ d, votes: data.votes, reunions: data.reunions, sujets: data.sujets, membres: data.membres, signatures: data.signatures || [], association, L, lang, sortie: "blob" });
   const chemin = `${profile.association_id}/resolutions/${Date.now()}_${res.fichier}`;
   const { error: e1 } = await supabase.storage.from(BUCKET).upload(chemin, res.blob, { contentType: "application/pdf" });
   if (e1) return false;
@@ -1041,15 +1106,16 @@ export default function ComiteRestreint({ profile, association }) {
       setData((d) => ({ ...d, decisions: dec || [] }));
       return;
     }
-    const [mb, re, su, de, vo, doc] = await Promise.all([
+    const [mb, re, su, de, vo, doc, sg] = await Promise.all([
       supabase.rpc("comite_membres_effectifs"),
       supabase.from("comite_reunions").select("*").eq("association_id", assoc).order("date_reunion", { ascending: false, nullsFirst: true }),
       supabase.from("comite_sujets").select("*").eq("association_id", assoc).order("created_at", { ascending: false }),
       supabase.from("comite_decisions").select("*").eq("association_id", assoc).order("created_at", { ascending: false }),
       supabase.from("comite_votes").select("*").eq("association_id", assoc),
       supabase.from("comite_documents").select("*").eq("association_id", assoc).order("created_at", { ascending: false }),
+      supabase.from("comite_pv_signatures").select("*").eq("association_id", assoc),
     ]);
-    setData({ membres: mb.data || [], reunions: re.data || [], sujets: su.data || [], decisions: de.data || [], votes: vo.data || [], documents: doc.data || [] });
+    setData({ membres: mb.data || [], reunions: re.data || [], sujets: su.data || [], decisions: de.data || [], votes: vo.data || [], documents: doc.data || [], signatures: sg.error ? [] : sg.data || [], signaturesActives: !sg.error });
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
 
@@ -1059,7 +1125,9 @@ export default function ComiteRestreint({ profile, association }) {
   const archivage = useRef(new Set());
   useEffect(() => {
     if (!acces?.membre) return;
-    const aFaire = data.decisions.filter((d) => d.statut !== "en_vote" && d.numero != null && !d.pv_document_id && !archivage.current.has(d.id));
+    if (!data.signaturesActives) return; // script 2026-10-10i pas encore exécuté
+    const aFaire = data.decisions.filter((d) => d.statut !== "en_vote" && d.numero != null && !d.pv_document_id && !archivage.current.has(d.id)
+      && signaturesManquantes(d, data.membres, data.signatures) === 0);
     if (!aFaire.length) return;
     aFaire.forEach((d) => archivage.current.add(d.id));
     (async () => {
@@ -1150,7 +1218,7 @@ export default function ComiteRestreint({ profile, association }) {
           <>
             {form === "decision" && <DecisionForm L={L} t={t} reunions={data.reunions} sujets={data.sujets} nbMembres={Math.max(data.membres.length, 1)} onDone={fermerForm} />}
             {data.decisions.length === 0 ? <p style={muted}>{L.no_decisions}</p>
-              : data.decisions.map((d) => <DecisionCard key={d.id} d={d} L={L} t={t} lang={lang} votes={data.votes} membres={data.membres} reunions={data.reunions} sujets={data.sujets} profile={profile} isPresident={isPresident} onChanged={load} association={association} documents={data.documents} />)}
+              : data.decisions.map((d) => <DecisionCard key={d.id} d={d} L={L} t={t} lang={lang} votes={data.votes} membres={data.membres} reunions={data.reunions} sujets={data.sujets} profile={profile} isPresident={isPresident} onChanged={load} association={association} documents={data.documents} signatures={data.signatures || []} />)}
           </>
         )}
 
