@@ -20,7 +20,7 @@
 // base : l'interface ne fait qu'afficher et proposer.
 // =====================================================================
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Vote, Trash2, FileDown, UserCheck, Users2, CheckCircle2, XCircle, Clock, Dices, Gavel, Handshake, ShieldCheck, Lock } from "lucide-react";
+import { Vote, Trash2, FileDown, UserCheck, Users2, CheckCircle2, XCircle, Clock, Dices, Gavel, Handshake, ShieldCheck, Lock, FileSignature, Upload, FolderOpen } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Card, Btn, Field, Table, td, RuleBox, inputStyle, RED, TEAL, TEAL_LIGHT, friendlyError, datetimeLocalToISO, formatEventDateTime } from "./shared";
 
@@ -138,6 +138,21 @@ const TXT = {
     pdf_not_proclaimed: "Résultats non encore proclamés (document provisoire).",
     pdf_secret: "Vote secret : l'urne ne contient aucun lien entre votant et bulletin ; seule la liste d'émargement indique qui a voté.",
     pdf_sign: "Signatures du comité électoral",
+    pdf_signed_on: "Signé électroniquement le {date}", pdf_signed_ref: "depuis son compte - réf. {h}",
+    pdf_fingerprint: "Empreinte des résultats signés (SHA-256) : {h}",
+    pdf_awaiting: "Signature électronique en attente",
+    pvb_title: "Procès-verbal : signatures et archivage",
+    pvb_help: "Chaque membre du comité signe le PV depuis son propre compte. Quand tout le comité a signé, le président d'élection (ou le bureau) le verse dans Documents (rubrique Gouvernance). On peut aussi téléverser le scan d'un PV signé à la main.",
+    pvb_signed: "Signé le {date}", pvb_waiting: "En attente de signature",
+    pvb_sign_btn: "Signer le PV", confirm_sign: "Signer électroniquement le procès-verbal ? Votre signature atteste les résultats proclamés et ne pourra pas être retirée.",
+    pvb_download_btn: "Télécharger le PV", pvb_file_btn: "Verser le PV signé aux Documents",
+    confirm_file: "Verser le procès-verbal signé par tout le comité dans Documents (rubrique Gouvernance) ?",
+    pvb_scan_btn: "Téléverser un PV signé à la main (scan)", confirm_scan: "Verser « {nom} » comme procès-verbal signé à la main ?",
+    pvb_missing: "Il manque encore {n} signature(s) du comité avant de pouvoir verser la version électronique.",
+    pvb_filed: "PV versé dans Documents le {date} par {nom}{mode}.", pvb_filed_scan: " (scan signé à la main)",
+    pvb_open_btn: "Ouvrir le PV archivé", pvb_refile: "Verser une nouvelle version",
+    pvb_done_signed: "Merci, votre signature est enregistrée.", pvb_done_filed: "Procès-verbal versé dans Documents.",
+    pvb_upload_error: "Envoi du fichier impossible : {e}",
     pdf_from_to: "du {a} au {b}", pdf_until: "jusqu’au {a}", pdf_page: "Page {p} sur {n}", pdf_signature: "Signature", pdf_date: "Date",
     pdf_col_result: "Résultat", pdf_role: "Rôle", pdf_none: "Aucun membre désigné.", pdf_election: "Élection", pdf_status: "Statut",
   },
@@ -254,6 +269,21 @@ const TXT = {
     pdf_not_proclaimed: "Results not yet proclaimed (provisional document).",
     pdf_secret: "Secret ballot: the ballot box holds no link between voter and ballot; only the sign-in list shows who voted.",
     pdf_sign: "Election committee signatures",
+    pdf_signed_on: "Electronically signed on {date}", pdf_signed_ref: "from their own account - ref. {h}",
+    pdf_fingerprint: "Fingerprint of the signed results (SHA-256): {h}",
+    pdf_awaiting: "Electronic signature pending",
+    pvb_title: "Minutes: signatures and filing",
+    pvb_help: "Each committee member signs the minutes from their own account. Once the whole committee has signed, the returning officer (or the board) files them in Documents (Governance). A scan of minutes signed by hand can also be uploaded.",
+    pvb_signed: "Signed on {date}", pvb_waiting: "Awaiting signature",
+    pvb_sign_btn: "Sign the minutes", confirm_sign: "Electronically sign the minutes? Your signature certifies the proclaimed results and cannot be withdrawn.",
+    pvb_download_btn: "Download the minutes", pvb_file_btn: "File the signed minutes in Documents",
+    confirm_file: "File the minutes signed by the whole committee in Documents (Governance)?",
+    pvb_scan_btn: "Upload minutes signed by hand (scan)", confirm_scan: "File \"{nom}\" as the minutes signed by hand?",
+    pvb_missing: "{n} committee signature(s) still missing before the electronic version can be filed.",
+    pvb_filed: "Minutes filed in Documents on {date} by {nom}{mode}.", pvb_filed_scan: " (scan signed by hand)",
+    pvb_open_btn: "Open the filed minutes", pvb_refile: "File a new version",
+    pvb_done_signed: "Thank you, your signature is recorded.", pvb_done_filed: "Minutes filed in Documents.",
+    pvb_upload_error: "File upload failed: {e}",
     pdf_from_to: "from {a} to {b}", pdf_until: "until {a}", pdf_page: "Page {p} of {n}", pdf_signature: "Signature", pdf_date: "Date",
     pdf_col_result: "Result", pdf_role: "Role", pdf_none: "No member appointed.", pdf_election: "Election", pdf_status: "Status",
   },
@@ -312,6 +342,7 @@ export default function Elections({ profile, isBureau, association, members, t, 
   const [comite, setComite] = useState([]);
   const [procurations, setProcurations] = useState([]);
   const [departages, setDepartages] = useState([]);
+  const [pvSignatures, setPvSignatures] = useState([]);
   const [tirages, setTirages] = useState({});
   const [etats, setEtats] = useState({});
   const [emargements, setEmargements] = useState([]); // les miens + ceux de mon mandant
@@ -322,14 +353,16 @@ export default function Elections({ profile, isBureau, association, members, t, 
   const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
-    const [{ data: el }, { data: cand }, { data: com, error: comErr }, { data: proc }, { data: dep }, { data: et }] = await Promise.all([
+    const [{ data: el }, { data: cand }, { data: com, error: comErr }, { data: proc }, { data: dep }, { data: et }, { data: sig }] = await Promise.all([
       supabase.from("elections").select("*").eq("association_id", profile.association_id).order("date_debut", { ascending: false }),
       supabase.from("election_candidats").select("*"),
       supabase.from("election_comite").select("*"),
       supabase.from("election_procurations").select("*"),
       supabase.from("election_departages").select("*"),
       supabase.rpc("etat_elections"),
+      supabase.from("election_pv_signatures").select("*"),
     ]);
+    setPvSignatures(sig || []);
     setSchemaPending(!!comErr);
     const els = el || [];
     setElections(els);
@@ -363,7 +396,7 @@ export default function Elections({ profile, isBureau, association, members, t, 
   useEffect(() => {
     const schedule = () => { clearTimeout(timer.current); timer.current = setTimeout(load, 700); };
     let channel = supabase.channel(`elections-${profile.association_id}`);
-    ["elections", "election_emargements", "election_candidats", "election_comite", "election_procurations", "election_departages", "tirages"]
+    ["elections", "election_emargements", "election_candidats", "election_comite", "election_procurations", "election_departages", "election_pv_signatures", "tirages"]
       .forEach((table) => { channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, schedule); });
     channel.subscribe();
     return () => { clearTimeout(timer.current); supabase.removeChannel(channel); };
@@ -425,6 +458,7 @@ export default function Elections({ profile, isBureau, association, members, t, 
           comite={comite.filter((c) => c.election_id === el.id)}
           procurations={procurations.filter((p) => p.election_id === el.id)}
           departages={departages.filter((d) => d.election_id === el.id)}
+          signatures={pvSignatures.filter((x) => x.election_id === el.id)}
           tirages={tirages}
           emargements={emargements.filter((e) => e.election_id === el.id)}
           eligib={eligib[el.id] || {}}
@@ -552,7 +586,7 @@ function postesDe(el, cands) {
   return list;
 }
 
-function ElectionCard({ el, etape, etat, cands, comite, procurations, departages, tirages, emargements, eligib, members, nameOf, photoOf, myId, isBureau, association, L, t, lang, rpc, reload, setErrorMsg, setInfo }) {
+function ElectionCard({ el, etape, etat, cands, comite, procurations, departages, signatures, tirages, emargements, eligib, members, nameOf, photoOf, myId, isBureau, association, L, t, lang, rpc, reload, setErrorMsg, setInfo }) {
   const avant = AVANT_SCRUTIN.includes(etape);
   const close = ["depouillement", "recours", "terminee"].includes(etape);
   const monRole = comite.find((c) => c.member_id === myId)?.role || null;
@@ -590,7 +624,7 @@ function ElectionCard({ el, etape, etat, cands, comite, procurations, departages
         <h4 style={{ fontSize: 15, margin: 0 }}>{el.titre}</h4>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <Pill color={etapeColor}>{L[`etape_${etape}`]}</Pill>
-          {voix && <Btn variant="outline" style={smallBtn} onClick={() => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, nameOf, association, L, lang })}><FileDown size={13} /> {L.pv_btn}</Btn>}
+          {voix && <Btn variant="outline" style={smallBtn} onClick={() => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang })}><FileDown size={13} /> {L.pv_btn}</Btn>}
           {isBureau && etape === "scrutin" && <Btn variant="outline" style={smallBtn} onClick={cloreMaintenant}><Lock size={13} /> {L.close_now_btn}</Btn>}
           {isBureau && <button onClick={supprimer} style={linkDanger}><Trash2 size={11} /> {L.delete_btn}</button>}
         </div>
@@ -644,6 +678,13 @@ function ElectionCard({ el, etape, etat, cands, comite, procurations, departages
       {/* Résultats */}
       {close && voix && (
         <Resultats el={el} etape={etape} quorumKo={etat?.quorum_atteint === false} postes={postes} valides={valides} voix={voix} departages={departages} tirages={tirages} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} monRole={monRole} comiteComplet={comiteComplet} L={L} rpc={rpc} setInfo={setInfo} />
+      )}
+
+      {/* Procès-verbal : signatures du comité et versement aux Documents */}
+      {el.proclame_le && voix && (monRole || isBureau || signatures.length > 0 || el.pv_verse_le) && (
+        <PvBlock el={el} comite={comite} signatures={signatures} myId={myId} monRole={monRole} isBureau={isBureau} nameOf={nameOf}
+          exporter={(sortie) => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang, sortie })}
+          L={L} t={t} lang={lang} rpc={rpc} reload={reload} setErrorMsg={setErrorMsg} setInfo={setInfo} />
       )}
     </Card>
   );
@@ -1039,7 +1080,7 @@ function pdfDate(iso, lang) {
   return pdfTexte(lang === "en" ? `${jour}, ${pad(d.getHours())}:${pad(d.getMinutes())}` : `${jour} à ${d.getHours()} h ${pad(d.getMinutes())}`);
 }
 
-async function exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, nameOf, association, L, lang }) {
+async function exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures = [], nameOf, association, L, lang, sortie = "telecharger" }) {
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
@@ -1231,14 +1272,27 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
     doc.text(T(c.member_id ? nameOf(c.member_id) : "...................................."), bx + 10, by + 18, { maxWidth: BOX_W - 20 });
     doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS);
     doc.text(T(L[`role_${c.role}`]), bx + 10, by + 31);
+    const sig = c.member_id ? signatures.find((x) => x.member_id === c.member_id) : null;
+    if (sig) {
+      // Signature électronique : date, compte et empreinte des résultats.
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...VERT);
+      doc.text(T(fill(L.pdf_signed_on, { date: D(sig.signe_le) })), bx + 10, by + 52);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text(T(fill(L.pdf_signed_ref, { h: (sig.empreinte || "").slice(0, 16) })), bx + 10, by + 63);
+      doc.setTextColor(...GRIS);
+    } else {
+      doc.setFontSize(8);
+      if (signatures.length) doc.text(T(L.pdf_awaiting), bx + 10, by + 52);
+    }
     doc.setDrawColor(...GRIS);
-    doc.line(bx + 10, by + 66, bx + BOX_W - 10, by + 66);
+    doc.line(bx + 10, by + 70, bx + BOX_W - 10, by + 70);
     doc.setFontSize(8);
-    doc.text(T(L.pdf_signature), bx + 10, by + 78);
-    doc.text(T(`${L.pdf_date} : ____ / ____ / ________`), bx + BOX_W - 10, by + 78, { align: "right" });
+    doc.text(T(L.pdf_signature), bx + 10, by + 81);
+    doc.text(T(sig ? `${L.pdf_date} : ${D(sig.signe_le)}` : `${L.pdf_date} : ____ / ____ / ________`), bx + BOX_W - 10, by + 81, { align: "right" });
     doc.setTextColor(0, 0, 0);
     if (i % 2 === 1 || i === signataires.length - 1) y += BOX_H + 12;
   });
+  if (signatures.length && signatures[0].empreinte) paragraphe(fill(L.pdf_fingerprint, { h: signatures[0].empreinte }), { size: 7.5, color: GRIS });
 
   // ----- Pied de page sur chaque page -----
   const n = doc.internal.getNumberOfPages();
@@ -1252,5 +1306,96 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
   }
 
   const nomFichier = (el.titre || "election").normalize("NFD").replace(/[\u0300-\u036F]/g, "").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
-  doc.save(`PV_${nomFichier || "election"}.pdf`);
+  const fichier = `PV_${nomFichier || "election"}.pdf`;
+  if (sortie === "blob") return { blob: doc.output("blob"), fichier };
+  doc.save(fichier);
+  return null;
+}
+
+// ---------------------------------------------------------------------
+// Signatures du PV par le comité, chacun depuis son compte, puis
+// versement dans Documents (sql 2026-10-09a_…_pv_signatures). Demande de
+// l'utilisateur (2026-10-09) : plus besoin d'imprimer et de faire
+// circuler le PV pour le signer.
+function PvBlock({ el, comite, signatures, myId, monRole, isBureau, nameOf, exporter, L, t, lang, rpc, reload, setErrorMsg, setInfo }) {
+  const [busy, setBusy] = useState(false);
+  const scanRef = useRef(null);
+  const ordre = [...comite].sort((a, b) => (a.role === "president" ? 0 : 1) - (b.role === "president" ? 0 : 1));
+  const signeePar = (mid) => signatures.find((x) => x.member_id === mid);
+  const manquants = comite.filter((c) => !signeePar(c.member_id)).length;
+  const peutVerser = isBureau || monRole === "president";
+  const dossier = `${el.association_id}/elections/${el.id}`;
+
+  async function signer() {
+    if (await rpc("signer_pv_election", { p_election_id: el.id }, L.confirm_sign)) setInfo(L.pvb_done_signed);
+  }
+  async function deposer(fichier, nom, signeMain) {
+    setBusy(true); setErrorMsg("");
+    const path = `${dossier}/${Date.now()}_${nom.normalize("NFD").replace(/[^\w.-]+/g, "_")}`;
+    const { error: upErr } = await supabase.storage.from("documents").upload(path, fichier, { contentType: fichier.type || "application/pdf" });
+    if (upErr) { setBusy(false); setErrorMsg(fill(L.pvb_upload_error, { e: rpcMessage(upErr, t) })); return; }
+    const { error } = await supabase.rpc("verser_pv_election", { p_election_id: el.id, p_path: path, p_nom: nom, p_signe_main: signeMain });
+    setBusy(false);
+    if (error) { setErrorMsg(rpcMessage(error, t)); return; }
+    setInfo(L.pvb_done_filed); reload();
+  }
+  async function verserElectronique() {
+    if (!window.confirm(L.confirm_file)) return;
+    const res = await exporter("blob");
+    if (res) await deposer(res.blob, res.fichier, false);
+  }
+  async function verserScan(e) {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || !window.confirm(fill(L.confirm_scan, { nom: f.name }))) return;
+    await deposer(f, f.name, true);
+  }
+  async function ouvrir() {
+    const { data: d } = await supabase.from("documents").select("storage_path").eq("id", el.pv_document_id).maybeSingle();
+    if (!d?.storage_path) return;
+    const { data, error } = await supabase.storage.from("documents").createSignedUrl(d.storage_path, 120);
+    if (error) setErrorMsg(rpcMessage(error, t)); else window.open(data.signedUrl, "_blank");
+  }
+
+  return (
+    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginTop: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><FileSignature size={15} color={TEAL} /> {L.pvb_title}</div>
+      <p style={{ fontSize: 11.5, color: GREY, margin: "0 0 10px" }}>{L.pvb_help}</p>
+      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+        {ordre.map((c) => {
+          const sig = signeePar(c.member_id);
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, flexWrap: "wrap" }}>
+              {sig ? <CheckCircle2 size={14} color={TEAL} /> : <Clock size={14} color="#B7791F" />}
+              <b>{nameOf(c.member_id)}</b>
+              <span style={{ color: GREY }}>· {L[`role_${c.role}`]}</span>
+              <span style={{ color: sig ? TEAL : "#B7791F", fontWeight: 600 }}>{sig ? fill(L.pvb_signed, { date: formatEventDateTime(sig.signe_le, lang) }) : L.pvb_waiting}</span>
+              {!sig && c.member_id === myId && <Btn style={smallBtn} onClick={signer}><FileSignature size={12} /> {L.pvb_sign_btn}</Btn>}
+            </div>
+          );
+        })}
+      </div>
+
+      {el.pv_verse_le && (
+        <p style={{ fontSize: 12.5, color: TEAL, fontWeight: 600, margin: "0 0 8px" }}>
+          {fill(L.pvb_filed, { date: formatEventDateTime(el.pv_verse_le, lang), nom: el.pv_verse_par_nom || "—", mode: el.pv_signe_main ? L.pvb_filed_scan : "" })}
+        </p>
+      )}
+      {peutVerser && manquants > 0 && <p style={{ fontSize: 11.5, color: "#B7791F", margin: "0 0 8px" }}>{fill(L.pvb_missing, { n: manquants })}</p>}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <Btn variant="outline" style={smallBtn} onClick={() => exporter("telecharger")}><FileDown size={12} /> {L.pvb_download_btn}</Btn>
+        {el.pv_document_id && <Btn variant="outline" style={smallBtn} onClick={ouvrir}><FolderOpen size={12} /> {L.pvb_open_btn}</Btn>}
+        {peutVerser && (
+          <>
+            <Btn style={smallBtn} disabled={busy || manquants > 0 || comite.length === 0} onClick={verserElectronique}>
+              <Upload size={12} /> {el.pv_verse_le ? L.pvb_refile : L.pvb_file_btn}
+            </Btn>
+            <Btn variant="outline" style={smallBtn} disabled={busy} onClick={() => scanRef.current?.click()}><Upload size={12} /> {L.pvb_scan_btn}</Btn>
+            <input ref={scanRef} type="file" accept="application/pdf,image/*" style={{ display: "none" }} onChange={verserScan} />
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
