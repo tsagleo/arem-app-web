@@ -7754,9 +7754,22 @@ function GalleryPhotoEditModal({ photo, t, onSave, onClose }) {
 // =====================================================================
 function MemberCardModal({ member, association, t, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
-  const verifyUrl = `${window.location.origin}/?verify=${member.verification_token}`;
+  // Code protégé de la carte (sql/2026-10-10c) : lu par mon_jeton_carte(),
+  // lisible seulement par le membre lui-même — l'ancienne colonne
+  // members.verification_token, lisible par tous, ne sert plus. Repli sur
+  // elle tant que le script n'est pas exécuté.
+  const [cardToken, setCardToken] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("mon_jeton_carte").then(({ data, error }) => {
+      if (!cancelled) setCardToken(!error && data ? data : member.verification_token);
+    });
+    return () => { cancelled = true; };
+  }, [member.verification_token]);
+  const verifyUrl = cardToken ? `${window.location.origin}/?verify=${cardToken}` : "";
 
   useEffect(() => {
+    if (!verifyUrl) return;
     let cancelled = false;
     import("qrcode").then((QRCode) => {
       QRCode.toDataURL(verifyUrl, { width: 220, margin: 1 }).then((url) => {

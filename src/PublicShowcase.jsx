@@ -20,6 +20,7 @@ import { Landmark, Users2, CalendarDays, MapPin, Send, CheckCircle2, LogIn, Flag
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED, formatEventDateTime } from "./shared";
 import { badgeUrl, randomUuid, qrDataUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
+import { exporterProgrammePdf, txtEvPlus } from "./evenementsPlus";
 
 
 function goToLogin() {
@@ -503,7 +504,7 @@ function EventPublicPage({ eventId }) {
     setEv(data || null);
     if (data) {
       const { data: s } = await supabase.from("public_event_sessions").select("*").eq("event_id", eventId).order("ordre");
-      setSessions(s || []);
+      setSessions((s || []).slice().sort((a, b) => String(a.date_debut || "").localeCompare(String(b.date_debut || "")) || (a.ordre || 0) - (b.ordre || 0)));
     }
   }, [eventId]);
   useEffect(() => { load(); }, [load]);
@@ -588,10 +589,19 @@ function EventPublicPage({ eventId }) {
           <>
             <h3 style={{ fontSize: 15, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}><CalendarDays size={16} /> {t("pub_event_sessions_title")}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 480, marginBottom: 30 }}>
+              <button
+                onClick={() => exporterProgrammePdf({
+                  ev, sessions, lang,
+                  // Mentions légales et couleur exposées par la vue publique (sql 2026-10-10c).
+                  association: { nom: ev.association_nom, logo_url: ev.association_logo_url, statut_juridique: ev.association_statut_juridique, numero_enregistrement: ev.association_numero_enregistrement, adresse: ev.association_adresse, couleur_primaire: ev.association_couleur_primaire },
+                }).catch(() => {})}
+                style={{ alignSelf: "flex-start", background: "none", border: "1px solid rgba(42,42,42,.18)", borderRadius: 999, padding: "6px 14px", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "#1F3864" }}>
+                {txtEvPlus(lang).progPdf}
+              </button>
               {sessions.map((s, i) => (
                 <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: "white" }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.titre}</div>
-                  {s.date_debut && <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{formatEventDateTime(s.date_debut, lang)}{s.lieu ? ` · ${s.lieu}` : ""}</div>}
+                  {s.date_debut && <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{formatEventDateTime(s.date_debut, lang)}{s.date_fin ? ` → ${new Date(s.date_fin).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" })}` : ""}{s.lieu ? ` · ${s.lieu}` : ""}</div>}
                   {s.description && <div style={{ fontSize: 12, color: "#5B6270", marginTop: 3 }}>{s.description}</div>}
                 </div>
               ))}

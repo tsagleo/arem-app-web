@@ -61,6 +61,20 @@ export const EVPLUS_TXT = {
     status_non_autorise: "Réservé au bureau",
     status_non_confirme: "Inscription non confirmée",
     enrollNow: "Inscrire maintenant et pointer",
+    status_ancien_billet: "Ancien billet : demandez la carte de membre (Mon espace → Mon badge), elle sert de billet d'entrée.",
+    ticketHint: "Présentez ce code à l'entrée : c'est votre carte de membre, valable comme billet pour les événements où vous êtes inscrit(e).",
+    attestMine: "Mon attestation de participation (PDF)",
+    attestAll: "Attestations de participation (PDF)",
+    attestNone: "Personne n'a encore été pointé(e) à l'entrée de cet événement.",
+    attestTitle: "Attestation de participation",
+    attestBody: "{assoc} atteste que {nom} a participé à l'événement « {titre} », tenu le {date}{lieu}.",
+    attestRole: "Rôle : {r}.",
+    attestParticipant: "participant(e)",
+    attestVolunteer: "bénévole ({t})",
+    attestArrived: "Présence enregistrée à l'entrée le {d}.",
+    attestPlace: " à {l}",
+    attestDone: "Fait le {d}.",
+    attestSign: "Pour l'association — signature",
     checkPhoto: "Vérifiez que la photo correspond à la personne.",
     // Programme
     progTitle: "Programme",
@@ -118,6 +132,20 @@ export const EVPLUS_TXT = {
     status_non_autorise: "Board only",
     status_non_confirme: "Registration not confirmed",
     enrollNow: "Register now and check in",
+    status_ancien_billet: "Old ticket: ask for the membership card (My space → My badge); it serves as the entry ticket.",
+    ticketHint: "Show this code at the entrance: it is your membership card, valid as a ticket for events you are registered for.",
+    attestMine: "My certificate of attendance (PDF)",
+    attestAll: "Certificates of attendance (PDF)",
+    attestNone: "Nobody has been checked in at this event yet.",
+    attestTitle: "Certificate of attendance",
+    attestBody: "{assoc} certifies that {nom} attended the event \"{titre}\", held on {date}{lieu}.",
+    attestRole: "Role: {r}.",
+    attestParticipant: "participant",
+    attestVolunteer: "volunteer ({t})",
+    attestArrived: "Attendance recorded at the entrance on {d}.",
+    attestPlace: " at {l}",
+    attestDone: "Issued on {d}.",
+    attestSign: "On behalf of the association — signature",
     checkPhoto: "Check that the photo matches the person.",
     progTitle: "Program",
     progPdf: "Program (PDF)",
@@ -307,4 +335,59 @@ export async function downloadMemberBadgesPdf(membres, { association, lang = "fr
   if (sortie === "blob") return doc.output("blob");
   doc.save(fileName);
   return null;
+}
+
+// ---------------------------------------------------------------------
+// Attestations de participation : une page par personne, en-tête et pied
+// officiels. personnes : [{ nom, role ("participant" | texte bénévole),
+// checkin_le }]. Demande de l'utilisateur (2026-10-10).
+// ---------------------------------------------------------------------
+export async function exporterAttestationsPdf({ ev, personnes, association, lang, fileName }) {
+  const P = txtEvPlus(lang);
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const M = 64;
+  const W = doc.internal.pageSize.getWidth() - 2 * M;
+  const loc = lang === "en" ? "en-CA" : "fr-CA";
+  for (let i = 0; i < personnes.length; i++) {
+    const p = personnes[i];
+    if (i > 0) doc.addPage();
+    let y = await enTeteOfficiel(doc, association, { marge: M });
+    y += 30;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(0, 0, 0);
+    doc.text(pdfTexte(P.attestTitle).toUpperCase(), doc.internal.pageSize.getWidth() / 2, y, { align: "center" });
+    y += 12;
+    doc.setDrawColor(...couleurAssociation(association)); doc.setLineWidth(1.5);
+    doc.line(doc.internal.pageSize.getWidth() / 2 - 80, y, doc.internal.pageSize.getWidth() / 2 + 80, y);
+    y += 50;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(12.5);
+    const corps = P.attestBody
+      .replace("{assoc}", association?.nom || "")
+      .replace("{nom}", p.nom || "")
+      .replace("{titre}", ev.titre || "")
+      .replace("{date}", formatEventDateTime(ev.date_debut, lang))
+      .replace("{lieu}", ev.lieu ? P.attestPlace.replace("{l}", ev.lieu) : "");
+    const lignes = doc.splitTextToSize(pdfTexte(corps), W);
+    doc.text(lignes, M, y, { lineHeightFactor: 1.6 });
+    y += lignes.length * 20 + 14;
+    doc.setFont("helvetica", "bold");
+    doc.text(pdfTexte(P.attestRole.replace("{r}", p.role || P.attestParticipant)), M, y);
+    y += 22;
+    if (p.checkin_le) {
+      doc.setFont("helvetica", "italic"); doc.setFontSize(11);
+      doc.text(pdfTexte(P.attestArrived.replace("{d}", formatEventDateTime(p.checkin_le, lang))), M, y);
+      y += 20;
+    }
+    y += 40;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+    doc.text(pdfTexte(P.attestDone.replace("{d}", new Date().toLocaleDateString(loc, { day: "numeric", month: "long", year: "numeric" }))), M, y);
+    y += 70;
+    const x2 = M + W - 220;
+    doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.6);
+    doc.line(x2, y, x2 + 220, y);
+    doc.setFont("helvetica", "italic"); doc.setFontSize(9.5);
+    doc.text(pdfTexte(P.attestSign), x2, y + 13);
+  }
+  piedsDePageOfficiels(doc, association, { marge: M, texte: `${P.attestTitle} - ${ev.titre || ""}` });
+  doc.save(fileName || `Attestations_${(ev.titre || "evenement").normalize("NFD").replace(/[^A-Za-z0-9]+/g, "_")}.pdf`);
 }

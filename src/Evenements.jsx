@@ -7,7 +7,7 @@ import {
   CalendarDays, Plus, Pencil, Trash2, X, Video, Download, Star, MessageCircle, CreditCard, Eye, ChevronDown,
   QrCode, Ban, FileDown, Link2, Repeat, ClipboardCheck, Search, Printer, Upload, IdCard,
 } from "lucide-react";
-import { txtEvPlus, statsBenevolat, retraitSurDemande, exporterProgrammePdf, downloadMemberBadgesPdf } from "./evenementsPlus";
+import { txtEvPlus, statsBenevolat, retraitSurDemande, exporterProgrammePdf, downloadMemberBadgesPdf, exporterAttestationsPdf } from "./evenementsPlus";
 import { badgeUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
@@ -322,7 +322,17 @@ function EventQrScanner({ active, onDecode, t }) {
 
 function TicketModal({ ev, rsvp, association, t, lang, onClose }) {
   const [qrDataUrl, setQrDataUrl] = useState(null);
-  const billetUrl = `${window.location.origin}/?billet=${rsvp.billet_token}`;
+  // Le billet affiche la CARTE DE MEMBRE (code protégé, sql/2026-10-10c) :
+  // à l'entrée, elle n'est acceptée que si la personne est inscrite. Le
+  // code du billet, lisible par les autres membres, n'ouvre plus l'entrée.
+  const [cardToken, setCardToken] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.rpc("mon_jeton_carte").then(({ data, error }) => { if (!cancelled && !error && data) setCardToken(data); });
+    return () => { cancelled = true; };
+  }, []);
+  const billetUrl = cardToken ? `${window.location.origin}/?verify=${cardToken}` : `${window.location.origin}/?billet=${rsvp.billet_token}`;
+  const P = txtEvPlus(lang);
   useEffect(() => {
     let cancelled = false;
     import("qrcode").then((QRCode) => {
@@ -342,6 +352,7 @@ function TicketModal({ ev, rsvp, association, t, lang, onClose }) {
         <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 16 }}>{ev.titre}</p>
         {qrDataUrl ? <img src={qrDataUrl} alt="QR" style={{ width: 180, height: 180 }} /> : <div style={{ width: 180, height: 180, margin: "0 auto", background: "#F1F2F4", borderRadius: 8 }} />}
         <p style={{ fontSize: 11.5, color: "#333", marginTop: 4 }}>{new Date(ev.date_debut).toLocaleString(lang === "en" ? "en-CA" : "fr-CA")}</p>
+        {cardToken && <p style={{ fontSize: 11, color: "#5B6270", marginTop: 6 }}>{P.ticketHint}</p>}
         {rsvp.checkin_le ? (
           <p style={{ fontSize: 12, fontWeight: 700, color: TEAL, marginTop: 10 }}>{t("ev_ticket_checked_in").replace("{date}", new Date(rsvp.checkin_le).toLocaleString(lang === "en" ? "en-CA" : "fr-CA"))}</p>
         ) : (
@@ -968,6 +979,9 @@ export default function Evenements({ profile, isBureau, association }) {
     if (kind === "membre") { await pointerCarteMembre(token, eventId); return; }
     if (kind !== "badge") {
       const { data, error } = await supabase.rpc("checkin_event_ticket", { p_token: token });
+      if (kind === "billet" && error && (error.code === "42501" || /permission/i.test(error.message || ""))) {
+        setScanResult({ status: "ancien_billet", membre: true }); setManualToken(""); return;
+      }
       const row = Array.isArray(data) ? data[0] : data;
       // Jeton brut inconnu des billets adhérents : on tente un badge visiteur.
       if (!(kind === "inconnu" && (error || row?.status === "introuvable"))) {
@@ -1218,13 +1232,47 @@ export default function Evenements({ profile, isBureau, association }) {
       supabase.from("board_members").select("member_id,poste,mandat_fin").eq("association_id", profile.association_id),
     ]);
     if (error) { alert(rpcErr(error)); return; }
+    // Codes protégés des cartes (sql/2026-10-10c) — repli sur l'ancien code.
+    const { data: jetons } = await supabase.from("member_card_tokens").select("member_id,token");
+    const jetonDe = (m) => (jetons || []).find((j) => j.member_id === m.id)?.token || m.verification_token;
     const today = new Date().toISOString().slice(0, 10);
     const poste = (id) => (board || []).find((b) => b.member_id === id && (!b.mandat_fin || b.mandat_fin >= today))?.poste;
     try {
-      await downloadMemberBadgesPdf((mems || []).map((m) => ({ ...m, role_label: poste(m.id) || EP.member })), {
+      await downloadMemberBadgesPdf((mems || []).map((m) => ({ ...m, verification_token: jetonDe(m), role_label: poste(m.id) || EP.member })), {
         association, lang, fileName: `badges_membres_${safeFileName(association?.nom)}.pdf`,
       });
     } catch (e) { alert(rpcErr(e)); }
+  }
+
+  // ---------- Attestations de participation ----------
+  // Bureau : toutes les personnes pointées à l'entrée (adhérents, visiteurs)
+  // et les bénévoles confirmés ; adhérent : la sienne, s'il a été pointé.
+  async function attestations(ev, seulementMoi) {
+    const benevoleDe = (memberId) => {
+      const taches = volunteerTasks.filter((vt) => vt.event_id === ev.id && volunteerSignups.some((x) => x.task_id === vt.id && x.member_id === memberId && (x.statut || "confirme") !== "en_attente"));
+      return taches.length ? EP.attestVolunteer.replace("{t}", taches.map((vt) => vt.titre).join(", ")) : null;
+    };
+    let personnes;
+    if (seulementMoi) {
+      const r = myRsvp(ev.id);
+      personnes = [{ nom: members.find((m) => m.id === profile.member_id)?.nom || profile.nom_complet, role: benevoleDe(profile.member_id), checkin_le: r?.checkin_le }];
+    } else {
+      const ids = new Set();
+      personnes = [];
+      rsvps.filter((r) => r.event_id === ev.id && r.checkin_le).forEach((r) => {
+        ids.add(r.member_id);
+        personnes.push({ nom: members.find((m) => m.id === r.member_id)?.nom || "—", role: benevoleDe(r.member_id), checkin_le: r.checkin_le });
+      });
+      volunteerTasks.filter((vt) => vt.event_id === ev.id).forEach((vt) => volunteerSignups.filter((x) => x.task_id === vt.id && (x.statut || "confirme") === "confirme" && !ids.has(x.member_id)).forEach((x) => {
+        ids.add(x.member_id);
+        personnes.push({ nom: members.find((m) => m.id === x.member_id)?.nom || "—", role: benevoleDe(x.member_id) });
+      }));
+      eventPublicRegistrations(ev.id).filter((r) => r.checkin_le && r.statut !== "annulee").forEach((r) => personnes.push({ nom: r.nom, checkin_le: r.checkin_le }));
+      personnes.sort((a, b) => String(a.nom).localeCompare(String(b.nom)));
+    }
+    if (!personnes.length) { alert(EP.attestNone); return; }
+    try { await exporterAttestationsPdf({ ev, personnes, association, lang }); }
+    catch (e) { alert(rpcErr(e)); }
   }
 
   // ---------- Programme officiel : PDF, impression, archive ----------
@@ -1502,6 +1550,7 @@ export default function Evenements({ profile, isBureau, association }) {
                     <button onClick={() => downloadParticipantsCsv(ev, confirmed, members, association)} title={t("ev_export_participants_btn")} style={HERO_ICON_BTN}><FileDown size={13} /></button>
                     <button onClick={() => generateBilanPdf(ev)} title={t("ev_bilan_pdf_btn")} style={HERO_ICON_BTN}><ClipboardCheck size={13} /></button>
                     <button onClick={() => createSatisfactionPoll(ev)} title={t("ev_poll_create_btn")} style={HERO_ICON_BTN}><MessageCircle size={13} /></button>
+                    <button onClick={() => attestations(ev, false)} title={EP.attestAll} style={HERO_ICON_BTN}><IdCard size={13} /></button>
                   </>
                 )}
               </div>
@@ -1624,6 +1673,11 @@ export default function Evenements({ profile, isBureau, association }) {
                 );
               })()}
 
+              {mine?.checkin_le && (
+                <button onClick={() => attestations(ev, true)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(42,42,42,.14)", borderRadius: 999, padding: "8px 16px", cursor: "pointer", color: NAVY, fontSize: 13, fontWeight: 600, alignSelf: "flex-start" }}>
+                  <FileDown size={14} /> {EP.attestMine}
+                </button>
+              )}
               {profile.role === "adherent" && mine?.statut === "confirme" && (
                 <button onClick={() => setTicketEventId(ev.id)} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "1px solid rgba(42,42,42,.14)", borderRadius: 999, padding: "8px 16px", cursor: "pointer", color: TEAL, fontSize: 13, fontWeight: 600, alignSelf: "flex-start" }}>
                   <QrCode size={14} /> {t("ev_ticket_btn")}

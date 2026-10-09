@@ -61,7 +61,9 @@ export default function MesEngagements({ me, association }) {
   }
   async function monBadge() {
     try {
-      await downloadMemberBadgesPdf([{ ...me, role_label: P.member }], { association, lang, fileName: "mon_badge_membre.pdf" });
+      // Code protégé de ma carte (sql/2026-10-10c), repli sur l'ancien.
+      const { data: jeton } = await supabase.rpc("mon_jeton_carte");
+      await downloadMemberBadgesPdf([{ ...me, verification_token: jeton || me.verification_token, role_label: P.member }], { association, lang, fileName: "mon_badge_membre.pdf" });
     } catch (e) { alert(friendlyError(e, t)); }
   }
 
