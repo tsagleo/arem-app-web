@@ -6,7 +6,7 @@ import {
  Bell, BellOff, FileText, History, Settings, Printer, LogOut, Download, Eye, EyeOff, Trash2, Pencil,
   Landmark, Rss, Kanban, CalendarDays, Gift, Vote, Building2, KeyRound, Copy, RefreshCw, CreditCard, X, ChevronDown, ChevronLeft,
   MoreVertical, Ban, Receipt, FileSignature, Upload, BarChart3, Wallet, Flower2, Gavel, QrCode, Search, Sparkles, ArrowRight, ChevronRight, UserCog,
-  Globe, Layers, Car, Video, Briefcase, Dices,
+  Globe, Layers, Car, Video, Briefcase, Dices, ShoppingBasket,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { LangProvider, LanguageSwitcher, useLang, friendlyError, isNetworkError, cacheAuthSnapshot, readCachedAuthSnapshot, currencyOptions, timezoneOptions, OrgLegalSubline, WhatsAppShareButton, getPushSubscriptionState, subscribeToPush, unsubscribeFromPush, OfflineBanner, NotifBadge, foldText, TextSizeProvider, TextSizeControl, RECU_CATEGORIES, toDatetimeLocal } from "./shared";
@@ -59,6 +59,7 @@ const Covoiturage = lazyModule(() => import("./Covoiturage.jsx"));
 const Reunions = lazyModule(() => import("./Reunions.jsx"));
 const Emploi = lazyModule(() => import("./Emploi.jsx"));
 const Tirages = lazyModule(() => import("./Tirages.jsx"));
+const AchatsGroupes = lazyModule(() => import("./AchatsGroupes.jsx"));
 
 // =====================================================================
 // CONSTANTES
@@ -109,7 +110,7 @@ const RUBRIQUE_KEY_MAP = {
 const BUREAU_CONFIGURABLE_MODULES = [
   "membres", "inscription", "tontine", "collation", "urgence", "secours",
   "finances", "paiements_interac", "gouvernance", "vieassociative", "presences",
-  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages",
+  "projets", "evenements", "covoiturage", "reunions", "emploi", "sondages", "tirages", "achats",
   "funeraire", "sanctions", "dons", "emprunts", "documents", "annonces",
   "journal", "demandes_suppression", "acces", "config",
 ];
@@ -122,7 +123,7 @@ const BUREAU_MODULE_LABEL_KEYS = {
   finances: "nav_finances", paiements_interac: "nav_interac", gouvernance: "nav_governance",
   vieassociative: "nav_community", presences: "nav_presences", projets: "nav_projects",
   evenements: "nav_events", covoiturage: "nav_carpool", reunions: "nav_meetings",
-  emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", funeraire: "nav_funeraire",
+  emploi: "nav_jobs", sondages: "nav_polls", tirages: "nav_draws", achats: "nav_achats", funeraire: "nav_funeraire",
   sanctions: "nav_sanctions", dons: "nav_donations", emprunts: "nav_loans",
   documents: "nav_documents", annonces: "nav_announcements", journal: "nav_activity",
   demandes_suppression: "nav_del_requests", acces: "nav_access", config: "nav_config",
@@ -264,6 +265,7 @@ const JRN_TABLE_LABEL_KEYS = {
   events: "jrn_table_events", event_rsvps: "jrn_table_event_rsvps",
   donations: "jrn_table_donations", documents: "jrn_table_documents", announcements: "jrn_table_announcements",
   posts: "jrn_table_posts", elections: "jrn_table_elections", tirages: "jrn_table_tirages",
+  achats_groupes: "jrn_table_achats_groupes", achats_souscriptions: "jrn_table_achats_souscriptions", achats_mouvements: "jrn_table_achats_mouvements",
   election_candidats: "jrn_table_election_candidats", election_votes: "jrn_table_election_votes",
   tontine_seances: "jrn_table_tontine_seances", tontine_presences: "jrn_table_tontine_presences",
   collation_presences: "jrn_table_collation_presences", board_members: "jrn_table_board_members",
@@ -2431,6 +2433,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     { id: "emploi", label: t("nav_jobs"), roles: ["bureau", "responsable", "adherent"], keywords: ["carrière", "candidature", "bénévolat", "cv"] },
     { id: "sondages", label: t("nav_polls"), roles: ["bureau", "responsable", "adherent"], keywords: ["vote", "consultation"] },
     { id: "tirages", label: t("nav_draws"), roles: ["bureau", "responsable", "adherent"], keywords: ["tirage", "hasard", "ordre de passage", "tontine", "direct"] },
+    { id: "achats", label: t("nav_achats"), roles: ["bureau", "responsable", "adherent"], keywords: ["achat groupé", "coopérative", "prix de gros", "commande", "colis", "conteneur", "envoi", "ristourne"] },
     { id: "funeraire", label: t("nav_funeraire"), roles: ["bureau", "responsable", "adherent"], keywords: ["décès", "deuil", "condoléances"] },
     { id: "sanctions", label: t("nav_sanctions"), roles: ["bureau", "adherent"], keywords: ["avertissement", "suspension", "discipline"] },
     { id: "dons", label: t("nav_donations"), roles: ["bureau"], keywords: ["don", "contribution"] },
@@ -2480,7 +2483,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [isPremiumPlan, profile.association_id]);
-  const PREMIUM_FEATURE_IDS =["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
+  const PREMIUM_FEATURE_IDS =["vieassociative", "presences", "projets", "evenements", "sondages", "tirages", "achats", "funeraire", "sanctions", "covoiturage", "reunions", "emploi"];
   // Bouton « Passer à Premium » des écrans verrouillés : bascule sur
   // Configuration (où vit la carte « Votre forfait ») puis y fait défiler
   // la page — fonctionne qu'on parte d'un autre onglet ou qu'on soit déjà
@@ -4018,6 +4021,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
         { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
         { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
         { id: "tirages", label: t("nav_draws"), icon: Dices },
+        { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
         { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
         { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
         { id: "dons", label: t("nav_donations"), icon: Gift },
@@ -4045,6 +4049,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
+      { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
       { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
       { id: "documents", label: t("nav_documents"), icon: FileText },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
@@ -4061,6 +4066,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
+      { id: "achats", label: t("nav_achats"), icon: ShoppingBasket },
       { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
       { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
@@ -6733,6 +6739,10 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       {tab === "tirages" && (isBureau || isResponsable || isAdherent) && (
         isPremiumPlan ? <Tirages profile={profile} isBureau={isBureau} association={association} />
           : <Container><Section><PremiumLocked label={t("nav_draws")} onUpgrade={goToForfait} features={[t("premium_feat_tirages_1"), t("premium_feat_tirages_2"), t("premium_feat_tirages_3")]} /></Section></Container>
+      )}
+      {tab === "achats" && (isBureau || isResponsable || isAdherent) && (
+        isPremiumPlan ? <AchatsGroupes profile={profile} isBureau={isBureau} association={association} />
+          : <Container><Section><PremiumLocked label={t("nav_achats")} onUpgrade={goToForfait} features={[t("premium_feat_achats_1"), t("premium_feat_achats_2"), t("premium_feat_achats_3")]} /></Section></Container>
       )}
       {tab === "funeraire" && (isBureau || isResponsable || isAdherent) && (
         isPremiumPlan ? <Funeraire profile={profile} isBureau={isBureau} isPresident={isPresident} association={association} />
