@@ -138,6 +138,10 @@ const BENEVOLAT_TXT = {
     seeEvent: "Voir l'événement",
     places: "place(s) restante(s)",
     skills: "Compétences",
+    loadError: "Impossible de lire les membres disponibles :",
+    noneChecked: "Aucun membre n’a encore « Disponible pour le bénévolat » à Oui sur sa fiche (Membres → fiche de l’adhérent → Modifier).",
+    addTaskFirst: "Ajoutez une tâche ci-dessous : vous pourrez ensuite inscrire ou prévenir ces membres directement sous la tâche.",
+    underEachTask: "Les boutons « Inscrire » et « Prévenir » se trouvent sous chaque tâche non complète.",
   },
   en: {
     dispoTitle: "Members available to volunteer",
@@ -166,6 +170,10 @@ const BENEVOLAT_TXT = {
     seeEvent: "View event",
     places: "spot(s) left",
     skills: "Skills",
+    loadError: "Could not load available members:",
+    noneChecked: "No member has “Available for volunteering” set to Yes on their profile yet (Members → member profile → Edit).",
+    addTaskFirst: "Add a task below: you can then sign up or notify these members right under the task.",
+    underEachTask: "The “Sign up” and “Notify” buttons are under each task that is not full.",
   },
 };
 
@@ -482,6 +490,7 @@ export default function Evenements({ profile, isBureau, association }) {
   // Selon la RLS de members, un adhérent ne reçoit au minimum que sa propre
   // fiche — suffisant pour savoir s'il doit voir l'encart des tâches ouvertes.
   const [availableMembers, setAvailableMembers] = useState([]);
+  const [availableError, setAvailableError] = useState(null);
   const [carpoolOffers, setCarpoolOffers] = useState([]);
   const [carpoolRequests, setCarpoolRequests] = useState([]);
   const [refundQueue, setRefundQueue] = useState([]);
@@ -575,6 +584,7 @@ export default function Evenements({ profile, isBureau, association }) {
     setRefundQueue(refundResult?.error ? [] : (refundResult?.data || []));
     setPublicRegistrations(publicRegsResult?.error ? [] : (publicRegsResult?.data || []));
     setAvailableMembers(availableResult?.error ? [] : (availableResult?.data || []).filter((m) => m.statut !== "Supprimé"));
+    setAvailableError(availableResult?.error || null);
     setLoading(false);
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
@@ -1734,6 +1744,21 @@ export default function Evenements({ profile, isBureau, association }) {
 
           {currentTab === "benevolat" && (
             <div>
+              {isBureau && (
+                <Card style={{ padding: 16, marginBottom: 16, background: TEAL_LIGHT, border: "1px solid rgba(46,139,116,.25)" }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEAL_DARK, marginBottom: 4 }}>🙋 {BV.dispoTitle} · {availableMembers.length}</div>
+                  {availableError ? (
+                    <div style={{ fontSize: 12, color: RED }}>{BV.loadError} {friendlyError(availableError, t)}</div>
+                  ) : availableMembers.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#5B6270" }}>{BV.noneChecked}</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 12, color: "#2A2A2A" }}>{availableMembers.map((m) => m.nom + (m.competences ? ` (${m.competences})` : "")).join(" · ")}</div>
+                      <div style={{ fontSize: 11.5, color: "#5B6270", marginTop: 6 }}>{eventVolunteerTasks(ev.id).length === 0 ? BV.addTaskFirst : BV.underEachTask}</div>
+                    </>
+                  )}
+                </Card>
+              )}
               {eventVolunteerTasks(ev.id).length === 0 && <p style={{ fontSize: 13, color: "#686F7D", fontStyle: "italic" }}>{t("ev_volunteer_empty")}</p>}
               {eventVolunteerTasks(ev.id).length > 0 && (() => {
                 const st = statsBenevolat(eventVolunteerTasks(ev.id), volunteerSignups);
