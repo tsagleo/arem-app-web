@@ -133,21 +133,25 @@ const BUREAU_MODULE_LABEL_KEYS = {
 // remplace l'ancien menu horizontal à 26 items qui wrappait sur plusieurs
 // lignes). Un id de navItems absent d'ici retombe sur "administration"
 // (voir son usage dans MainApp) plutôt que de disparaître silencieusement.
-const NAV_GROUP_ORDER = ["accueil", "membres", "finances", "vie", "gouvernance", "administration"];
+// Suite 2026-10-08 : réorganisation en 7 espaces (nouveau groupe
+// "entraide"). "comite", "achats" et "jeunesse" sont rangés d'avance :
+// leurs modules arrivent par d'autres branches.
+const NAV_GROUP_ORDER = ["accueil", "membres", "finances", "gouvernance", "vie", "entraide", "administration"];
 const NAV_GROUP_LABEL_KEYS = {
   accueil: "navgroup_home", membres: "navgroup_members", finances: "navgroup_finances",
-  vie: "navgroup_life", gouvernance: "navgroup_governance", administration: "navgroup_admin",
+  gouvernance: "navgroup_governance", vie: "navgroup_life", entraide: "navgroup_mutual_aid",
+  administration: "navgroup_admin",
 };
 const NAV_GROUP_OF = {
   apercu: "accueil", dashboard: "accueil", monespace: "accueil",
-  membres: "membres", inscription: "membres",
+  membres: "membres", inscription: "membres", presences: "membres",
   tontine: "finances", collation: "finances", urgence: "finances", secours: "finances",
   finances: "finances", paiements_interac: "finances", dons: "finances", emprunts: "finances",
-  gouvernance: "gouvernance", sanctions: "gouvernance",
-  vieassociative: "vie", presences: "vie", projets: "vie", evenements: "vie",
-  sondages: "vie", tirages: "vie", funeraire: "vie", annonces: "vie",
-  covoiturage: "vie", reunions: "vie", emploi: "vie",
-  documents: "administration", journal: "administration", demandes_suppression: "administration",
+  gouvernance: "gouvernance", comite: "gouvernance", sanctions: "gouvernance", documents: "gouvernance",
+  vieassociative: "vie", evenements: "vie", reunions: "vie", sondages: "vie",
+  tirages: "vie", annonces: "vie", projets: "vie",
+  covoiturage: "entraide", emploi: "entraide", funeraire: "entraide", achats: "entraide", jeunesse: "entraide",
+  journal: "administration", demandes_suppression: "administration",
   acces: "administration", config: "administration", securite: "administration",
 };
 // Catégories de la banque de documents (onglet Documents) — distinct de RUBRIQUE_KEY_MAP
@@ -4005,28 +4009,28 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       ...[
         { id: "membres", label: t("nav_members"), icon: Users },
         { id: "inscription", label: t("nav_inscription"), icon: IdCard },
+        { id: "presences", label: t("nav_presences"), icon: QrCode },
         { id: "tontine", label: t("nav_tontine"), icon: HeartHandshake },
         { id: "collation", label: t("nav_collation"), icon: Coffee },
         { id: "urgence", label: t("nav_urgence"), icon: ShieldCheck },
         { id: "secours", label: t("nav_secours"), icon: LifeBuoy },
         { id: "finances", label: t("nav_finances"), icon: FileBarChart },
         { id: "paiements_interac", label: t("nav_interac"), icon: CreditCard },
-        { id: "gouvernance", label: t("nav_governance"), icon: Landmark },
-        { id: "vieassociative", label: t("nav_community"), icon: Rss },
-        { id: "presences", label: t("nav_presences"), icon: QrCode },
-        { id: "projets", label: t("nav_projects"), icon: Kanban },
-        { id: "evenements", label: t("nav_events"), icon: CalendarDays },
-        { id: "covoiturage", label: t("nav_carpool"), icon: Car },
-        { id: "reunions", label: t("nav_meetings"), icon: Video },
-        { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
-        { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
-        { id: "tirages", label: t("nav_draws"), icon: Dices },
-        { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
-        { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
         { id: "dons", label: t("nav_donations"), icon: Gift },
         { id: "emprunts", label: t("nav_loans"), icon: Vote },
+        { id: "gouvernance", label: t("nav_governance"), icon: Landmark },
+        { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
         { id: "documents", label: t("nav_documents"), icon: FileText },
+        { id: "vieassociative", label: t("nav_community"), icon: Rss },
+        { id: "evenements", label: t("nav_events"), icon: CalendarDays },
+        { id: "reunions", label: t("nav_meetings"), icon: Video },
+        { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
+        { id: "tirages", label: t("nav_draws"), icon: Dices },
         { id: "annonces", label: t("nav_announcements"), icon: Bell },
+        { id: "projets", label: t("nav_projects"), icon: Kanban },
+        { id: "covoiturage", label: t("nav_carpool"), icon: Car },
+        { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
+        { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
         { id: "journal", label: t("nav_activity"), icon: History },
         { id: "demandes_suppression", label: t("nav_del_requests"), icon: AlertTriangle },
         { id: "acces", label: t("nav_access"), icon: KeyRound },
@@ -4039,34 +4043,35 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     navItems.push({ id: "dashboard", label: t("nav_dashboard"), icon: LayoutDashboard });
    if (r) navItems.push({ id: r === "fonds_urgence" ? "urgence" : r === "fonds_secours" ? "secours" : r, label: t(RUBRIQUE_KEY_MAP[r]), icon: IdCard });
     navItems.push(
-      { id: "vieassociative", label: t("nav_community"), icon: Rss },{ id: "gouvernance", label: t("nav_governance"), icon: Landmark },
-    { id: "projets", label: t("nav_projects"), icon: Kanban },
-    { id: "finances", label: t("nav_finances"), icon: FileBarChart },
+      { id: "finances", label: t("nav_finances"), icon: FileBarChart },
+      { id: "gouvernance", label: t("nav_governance"), icon: Landmark },
+      { id: "documents", label: t("nav_documents"), icon: FileText },
+      { id: "vieassociative", label: t("nav_community"), icon: Rss },
       { id: "evenements", label: t("nav_events"), icon: CalendarDays },
-      { id: "covoiturage", label: t("nav_carpool"), icon: Car },
       { id: "reunions", label: t("nav_meetings"), icon: Video },
-      { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
-      { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
-      { id: "documents", label: t("nav_documents"), icon: FileText },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
+      { id: "projets", label: t("nav_projects"), icon: Kanban },
+      { id: "covoiturage", label: t("nav_carpool"), icon: Car },
+      { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
+      { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
       { id: "securite", label: t("sec_title"), icon: ShieldCheck },
     );
  } else if (isAdherent) {
     navItems.push(
       { id: "monespace", label: t("nav_myspace"), icon: Users },
       { id: "gouvernance", label: t("nav_governance"), icon: Landmark },
+      { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
       { id: "vieassociative", label: t("nav_community"), icon: Rss },
       { id: "evenements", label: t("nav_events"), icon: CalendarDays },
-      { id: "covoiturage", label: t("nav_carpool"), icon: Car },
       { id: "reunions", label: t("nav_meetings"), icon: Video },
-      { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
       { id: "sondages", label: t("nav_polls"), icon: BarChart3 },
       { id: "tirages", label: t("nav_draws"), icon: Dices },
-      { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
-      { id: "sanctions", label: t("nav_sanctions"), icon: Gavel },
       { id: "annonces", label: t("nav_announcements"), icon: Bell },
+      { id: "covoiturage", label: t("nav_carpool"), icon: Car },
+      { id: "emploi", label: t("nav_jobs"), icon: Briefcase },
+      { id: "funeraire", label: t("nav_funeraire"), icon: Flower2 },
       { id: "securite", label: t("sec_title"), icon: ShieldCheck },
     );
   }
