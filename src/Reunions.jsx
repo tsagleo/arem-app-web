@@ -33,6 +33,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Video, Plus, Pencil, Trash2, Calendar, Users, FileText, Upload, ExternalLink, CheckCircle2, XCircle, Clock, Link2, Mic, Square, FileDown, Repeat, Percent, Save, FileSignature } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, useLang, friendlyError, RED, TEAL, TEAL_LIGHT, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 const AMBER = "#8A5A00";
@@ -332,23 +333,20 @@ export default function Reunions({ profile, isBureau, association }) {
     const { jsPDF } = jsPDFmod;
     const autoTable = autoTableMod.default || autoTableMod;
     const doc = new jsPDF({ unit: "pt", format: "letter" });
-    doc.setFontSize(15); doc.text(association?.nom || "Association", 40, 44);
-    doc.setFontSize(11); doc.text(t("reu_pdf_title"), 40, 62);
-    doc.setFontSize(10); doc.setTextColor(90, 90, 90);
-    doc.text(m.titre, 40, 80);
-    doc.text(formatDateTime(m.date_heure, lang), 40, 94);
-    doc.setTextColor(0, 0, 0);
+  // Logo + mentions légales (pdfOfficiel.js) — demande de l'utilisateur
+    // (2026-10-09) : sur tous les documents générés, pour leur authenticité.
+    const yDebut = await enTeteOfficiel(doc, association, { titre: t("reu_pdf_title"), sousTitre: `${m.titre} - ${formatDateTime(m.date_heure, lang)}` });
 
     const mr = meetingRsvps(m.id);
     const rows = mr.map((r) => [memberNom(r.member_id), t("reu_statut_" + r.statut)]);
     autoTable(doc, {
-      startY: 112,
+      startY: yDebut,
       head: [[t("reu_pdf_col_name"), t("reu_pdf_col_status")]],
       body: rows.length ? rows : [[t("reu_attendees_empty"), ""]],
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [31, 56, 100] },
+      headStyles: { fillColor: couleurAssociation(association) },
     });
-    let y = (doc.lastAutoTable?.finalY || 112) + 20;
+    let y = (doc.lastAutoTable?.finalY || yDebut) + 20;
     const present = mr.filter((r) => r.statut === "present").length;
     const confirmedCount = mr.filter((r) => r.statut === "confirme" || r.statut === "present").length;
     doc.setFontSize(9);
@@ -361,6 +359,7 @@ export default function Reunions({ profile, isBureau, association }) {
     }
     doc.setFontSize(8); doc.setTextColor(140, 140, 140);
     doc.text(t("reu_pdf_generated_on").replace("{date}", new Date().toLocaleString(lang === "en" ? "en-CA" : "fr-CA")), 40, y);
+    piedsDePageOfficiels(doc, association, { texte: t("reu_pdf_title") });
     doc.save(`presence_${slugify(m.titre)}.pdf`);
   }
 

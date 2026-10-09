@@ -32,6 +32,7 @@
 // d'ouverture), donc les trois états produits ici sont exacts.
 import { useState } from "react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels } from "./pdfOfficiel";
 import { Card, Btn, Field, useLang, friendlyError, money, inputStyle, exerciceBounds, toDatetimeLocal } from "./shared";
 
 // Toutes les tables propres à une association, pour l'export complet.
@@ -131,24 +132,9 @@ async function buildPdf({ t, association, year, devise, finances, gouvernance, a
   }
 
   // ---------- Couverture ----------
-  doc.setFontSize(22); doc.setTextColor(31, 56, 100); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || t("rap_org_fallback"), marginX, y); y += 20;
-  // Mentions légales (statut juridique, numéro d'enregistrement, adresse) —
-  // même sous-ligne que sur les reçus (OrgLegalSubline, suite 80), reprise
-  // ici en texte jsPDF puisque ce document est un PDF généré, pas une page
-  // HTML imprimée. N'affiche rien si rien n'est configuré (suite 86, Phase C
-  // — remarque de l'utilisateur : les mentions légales doivent apparaître
-  // sur tout document destiné à être imprimé ou transféré).
-  const legalParts = [association?.statut_juridique, association?.numero_enregistrement].filter(Boolean);
-  if (legalParts.length > 0) {
-    doc.setFontSize(9.5); doc.setTextColor(102, 102, 102); doc.setFont(undefined, "normal");
-    doc.text(legalParts.join(" — "), marginX, y); y += 13;
-  }
-  if (association?.adresse) {
-    doc.setFontSize(9.5); doc.setTextColor(102, 102, 102); doc.setFont(undefined, "normal");
-    const addrLines = doc.splitTextToSize(association.adresse, pageWidth - marginX * 2);
-    doc.text(addrLines, marginX, y); y += addrLines.length * 13;
-  }
+  // Logo + mentions légales (pdfOfficiel.js) — demande de l'utilisateur
+  // (2026-10-09) : sur tous les documents générés, pour leur authenticité.
+  y = await enTeteOfficiel(doc, association, { marge: marginX });
   y += 10;
   doc.setFontSize(15); doc.setTextColor(201, 162, 39);
   doc.text(t("rap_pdf_title").replace("{year}", String(year)), marginX, y); y += 20;
@@ -271,6 +257,7 @@ async function buildPdf({ t, association, year, devise, finances, gouvernance, a
     [t("rap_mem_reg_rate"), `${adherents.tauxInscription}%`],
   ]);
 
+  piedsDePageOfficiels(doc, association, { marge: marginX, texte: t("rap_pdf_title").replace("{year}", String(year)), libellePage: (p, n) => `${p} / ${n}` });
   doc.save(`rapport_annuel_${slugify(association?.nom)}_${year}.pdf`);
 }
 

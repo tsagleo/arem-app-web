@@ -24,6 +24,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Dices, Plus, X, Radio, ShieldCheck, Maximize2, Minimize2, Play, SkipForward, FastForward, Ban, CheckCircle2, AlertTriangle, Volume2, VolumeX, Eye, FileDown, MessageCircle, Timer, PartyPopper } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, friendlyError, formatEventDateTime, whatsappShareUrl, TEAL, TEAL_LIGHT, RED } from "./shared";
 
 const DUREES = [0, 5, 10, 15, 20, 30, 40, 60];
@@ -471,12 +472,10 @@ async function exporterPv(tirage, association, L, lang) {
   const autoTable = autoTableMod.default || autoTableMod;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   const x = 40;
-  let y = 50;
-  doc.setFontSize(16); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || "", x, y); y += 22;
-  doc.setFontSize(13);
-  doc.text(L.pdf_title, x, y); y += 18;
-  doc.setFontSize(12);
+  // Logo + mentions légales (pdfOfficiel.js) — demande de l'utilisateur
+  // (2026-10-09) : sur tous les documents générés, pour leur authenticité.
+  let y = await enTeteOfficiel(doc, association, { titre: L.pdf_title, marge: x });
+  doc.setFontSize(12); doc.setFont(undefined, "bold");
   doc.text(tirage.titre, x, y); y += 20;
   doc.setFont(undefined, "normal"); doc.setFontSize(10);
   const lignes = [
@@ -498,7 +497,7 @@ async function exporterPv(tirage, association, L, lang) {
     head: [[L.pdf_position, L.pdf_name]],
     body: ordreDe(tirage).map((r) => [String(r.position), r.nom]),
     styles: { fontSize: 10 },
-    headStyles: { fillColor: [14, 124, 102] },
+    headStyles: { fillColor: couleurAssociation(association) },
     margin: { left: x, right: x },
   });
   y = (doc.lastAutoTable?.finalY || y) + 36;
@@ -512,6 +511,7 @@ async function exporterPv(tirage, association, L, lang) {
     doc.line(cx, cy, cx + 220, cy);
     doc.text(role, cx, cy + 12);
   });
+  piedsDePageOfficiels(doc, association, { marge: x, texte: `${L.pdf_title} - ${tirage.titre || ""}`, libellePage: (p, n) => `${p} / ${n}` });
   doc.save(`${(tirage.titre || "tirage").replace(/[^a-z0-9]+/gi, "_")}_PV.pdf`);
 }
 

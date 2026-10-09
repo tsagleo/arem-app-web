@@ -22,6 +22,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Vote, Trash2, FileDown, UserCheck, Users2, CheckCircle2, XCircle, Clock, Dices, Gavel, Handshake, ShieldCheck, Lock, FileSignature, Upload, FolderOpen } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { pdfTexte, enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { Card, Btn, Field, Table, td, RuleBox, inputStyle, RED, TEAL, TEAL_LIGHT, friendlyError, datetimeLocalToISO, formatEventDateTime } from "./shared";
 
 const TXT = {
@@ -1057,19 +1058,6 @@ function Resultats({ el, etape, quorumKo, postes, valides, voix, departages, tir
 // passe donc par pdfTexte(), et les dates par un format court sans ces
 // caractères ; les tableaux font passer les textes longs à la ligne.
 // ---------------------------------------------------------------------
-function pdfTexte(s) {
-  return String(s ?? "")
-    .replace(/[\u202F\u2009\u2007\u00A0]/g, " ")
-    .replace(/[\u2018\u2019\u2032]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014]/g, "-")
-    .replace(/\u2192/g, "->")
-    .replace(/\u2026/g, "...")
-    // Dernier filet : tout caractère hors Latin-1 est retiré plutôt que
-    // de s'imprimer en charabia.
-    .replace(/[^ -\u00FF\n]/g, "");
-}
-
 function pdfDate(iso, lang) {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -1091,25 +1079,26 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
   const PAGE_H = doc.internal.pageSize.getHeight();
   const M = 48; // marge
   const W = PAGE_W - 2 * M;
-  const BLEU = [31, 56, 100];
-  const VERT = [14, 124, 102];
-  const ROUGE = [192, 57, 43];
-  const GRIS = [104, 111, 125];
+  // Sobriété demandée par l'utilisateur : texte en noir, mentions
+  // importantes en gras ou en italique, et une seule couleur d'accent
+  // (filets, en-têtes de tableaux) = couleur principale de l'association.
+  const ACCENT = couleurAssociation(association);
+  const NOIR = [0, 0, 0];
   let y = 0;
 
   const placeLibre = (h) => { if (y + h > PAGE_H - 60) { doc.addPage(); y = 56; } };
   const section = (titre) => {
     placeLibre(46);
     y += 14;
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...BLEU);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...NOIR);
     doc.text(T(titre).toUpperCase(), M, y);
-    doc.setDrawColor(...VERT); doc.setLineWidth(1.2);
+    doc.setDrawColor(...ACCENT); doc.setLineWidth(1.2);
     doc.line(M, y + 5, M + W, y + 5);
     y += 14;
     doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
   };
-  const paragraphe = (txt, { size = 10, color = [0, 0, 0], bold = false } = {}) => {
-    doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(size); doc.setTextColor(...color);
+  const paragraphe = (txt, { size = 10, bold = false, italic = false } = {}) => {
+    doc.setFont("helvetica", bold && italic ? "bolditalic" : bold ? "bold" : italic ? "italic" : "normal"); doc.setFontSize(size); doc.setTextColor(...NOIR);
     const lignes = doc.splitTextToSize(T(txt), W);
     placeLibre(lignes.length * size * 1.35 + 4);
     doc.text(lignes, M, y + size, { lineHeightFactor: 1.35 });
@@ -1123,7 +1112,7 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
       body: lignes.map(([k, v]) => [T(k), T(v)]),
       theme: "plain",
       styles: { font: "helvetica", fontSize: 10, cellPadding: { top: 4, bottom: 4, left: 6, right: 6 }, valign: "middle", overflow: "linebreak" },
-      columnStyles: { 0: { cellWidth: 170, fontStyle: "bold", textColor: BLEU }, 1: { cellWidth: W - 170 } },
+      columnStyles: { 0: { cellWidth: 170, fontStyle: "bold" }, 1: { cellWidth: W - 170 } },
       alternateRowStyles: { fillColor: [245, 247, 250] },
       margin: { left: M, right: M, top: 56, bottom: 60 },
     });
@@ -1136,35 +1125,26 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
       body: body.map((r) => r.map(T)),
       theme: "grid",
       styles: { font: "helvetica", fontSize: 10, cellPadding: 5, lineColor: [220, 224, 230], lineWidth: 0.5, valign: "middle", overflow: "linebreak" },
-      headStyles: { fillColor: VERT, textColor: 255, fontStyle: "bold" },
+      headStyles: { fillColor: ACCENT, textColor: 255, fontStyle: "bold" },
       columnStyles,
       margin: { left: M, right: M, top: 56, bottom: 60 },
     });
     y = doc.lastAutoTable.finalY + 8;
   };
 
-  // ----- En-tête -----
-  doc.setFillColor(...BLEU);
-  doc.rect(0, 0, PAGE_W, 78, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold"); doc.setFontSize(17);
-  doc.text(T(association?.nom || ""), M, 34);
-  doc.setFont("helvetica", "normal"); doc.setFontSize(11);
-  doc.text(T(L.pdf_title), M, 56);
-  doc.setFontSize(8.5);
-  doc.text(T(`${L.pdf_generated} ${D(new Date().toISOString())}`), PAGE_W - M, 56, { align: "right" });
-  doc.setTextColor(0, 0, 0);
-  y = 104;
+  // ----- En-tête officiel : logo + mentions légales (pdfOfficiel.js) -----
+  y = await enTeteOfficiel(doc, association, { titre: L.pdf_title, marge: M, droite: `${L.pdf_generated} ${D(new Date().toISOString())}` });
+  y += 6;
 
-  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...BLEU);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...NOIR);
   const titreLignes = doc.splitTextToSize(T(el.titre || ""), W);
   doc.text(titreLignes, M, y);
   y += (titreLignes.length - 1) * 18 + 8;
   doc.setTextColor(0, 0, 0);
-  if (el.description) paragraphe(el.description, { size: 10, color: GRIS });
+  if (el.description) paragraphe(el.description, { size: 10, italic: true });
   paragraphe(
     el.proclame_le ? fill(L.proclaimed_on, { date: D(el.proclame_le), nom: el.proclame_par_nom || "-" }) : L.pdf_not_proclaimed,
-    { size: 10, bold: true, color: el.proclame_le ? VERT : ROUGE },
+    { size: 10, bold: true, italic: !el.proclame_le },
   );
 
   // ----- Calendrier -----
@@ -1183,7 +1163,7 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
   const membresComite = [...comite].sort((a, b) => (a.role === "president" ? 0 : 1) - (b.role === "president" ? 0 : 1));
   if (membresComite.length) {
     tableau([L.pdf_member, L.pdf_role], membresComite.map((c) => [nameOf(c.member_id), L[`role_${c.role}`]]), { 0: { cellWidth: W * 0.55, fontStyle: "bold" } });
-  } else paragraphe(L.pdf_none, { color: GRIS });
+  } else paragraphe(L.pdf_none, { italic: true });
 
   // ----- Règles -----
   section(L.pdf_rules);
@@ -1209,18 +1189,18 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
     [L.pdf_procurations, `${etat?.votants_par_procuration || 0} / ${procValidees}`],
     [L.pdf_quorum, quorum],
   ]);
-  paragraphe(L.pdf_secret, { size: 8.5, color: GRIS });
+  paragraphe(L.pdf_secret, { size: 8.5, italic: true });
 
   // ----- Résultats -----
   section(L.pdf_results);
   if (quorumKo) {
-    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    doc.setFont("helvetica", "bolditalic"); doc.setFontSize(10);
     const lignes = doc.splitTextToSize(T(L.quorum_ko_result), W - 20);
     const h = lignes.length * 13.5 + 14;
     placeLibre(h + 8);
-    doc.setFillColor(251, 228, 225); doc.setDrawColor(...ROUGE); doc.setLineWidth(0.8);
-    doc.roundedRect(M, y, W, h, 4, 4, "FD");
-    doc.setTextColor(...ROUGE);
+    doc.setDrawColor(...NOIR); doc.setLineWidth(0.8);
+    doc.roundedRect(M, y, W, h, 4, 4, "S");
+    doc.setTextColor(...NOIR);
     doc.text(lignes, M + 10, y + 17, { lineHeightFactor: 1.35 });
     doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal");
     y += h + 10;
@@ -1232,7 +1212,7 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
     const r = resultatPoste(valides.filter((c) => posteKey(c) === poste), etat?.voix, dep, tir, quorumKo);
     if (r.lignes.length === 0) return;
     placeLibre(80);
-    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...BLEU);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...NOIR);
     doc.text(T(poste || L.no_poste), M, y + 8);
     doc.setTextColor(0, 0, 0);
     y += 14;
@@ -1242,10 +1222,10 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
         nameOf(c.member_id), String(v), `${r.total > 0 ? Math.round((v / r.total) * 100) : 0} %`,
         r.gagnant === c.member_id ? (r.parTirage ? L.elected_by_draw : L.elected) : (r.egalite && v === r.lignes[0].v ? L.tie : ""),
       ]),
-      { 0: { cellWidth: W * 0.46, fontStyle: "bold" }, 1: { cellWidth: W * 0.12, halign: "center" }, 2: { cellWidth: W * 0.12, halign: "center" }, 3: { textColor: VERT, fontStyle: "bold" } },
+      { 0: { cellWidth: W * 0.46, fontStyle: "bold" }, 1: { cellWidth: W * 0.12, halign: "center" }, 2: { cellWidth: W * 0.12, halign: "center" }, 3: { fontStyle: "bolditalic" } },
     );
-    if (r.total === 0) paragraphe(L.no_votes, { size: 9, color: GRIS });
-    if (r.parTirage && tir?.engagement) paragraphe(fill(L.pdf_tie_note, { h: tir.engagement }), { size: 8, color: GRIS });
+    if (r.total === 0) paragraphe(L.no_votes, { size: 9, italic: true });
+    if (r.parTirage && tir?.engagement) paragraphe(fill(L.pdf_tie_note, { h: tir.engagement }), { size: 8, italic: true });
   });
 
   // ----- Proclamation -----
@@ -1270,21 +1250,21 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
     doc.roundedRect(bx, by, BOX_W, BOX_H, 4, 4, "S");
     doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(0, 0, 0);
     doc.text(T(c.member_id ? nameOf(c.member_id) : "...................................."), bx + 10, by + 18, { maxWidth: BOX_W - 20 });
-    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS);
+    doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(...NOIR);
     doc.text(T(L[`role_${c.role}`]), bx + 10, by + 31);
     const sig = c.member_id ? signatures.find((x) => x.member_id === c.member_id) : null;
     if (sig) {
       // Signature électronique : date, compte et empreinte des résultats.
-      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...VERT);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(...NOIR);
       doc.text(T(fill(L.pdf_signed_on, { date: D(sig.signe_le) })), bx + 10, by + 52);
       doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
       doc.text(T(fill(L.pdf_signed_ref, { h: (sig.empreinte || "").slice(0, 16) })), bx + 10, by + 63);
-      doc.setTextColor(...GRIS);
+      doc.setFont("helvetica", "normal");
     } else {
-      doc.setFontSize(8);
+      doc.setFont("helvetica", "italic"); doc.setFontSize(8);
       if (signatures.length) doc.text(T(L.pdf_awaiting), bx + 10, by + 52);
     }
-    doc.setDrawColor(...GRIS);
+    doc.setFont("helvetica", "normal"); doc.setDrawColor(...NOIR);
     doc.line(bx + 10, by + 70, bx + BOX_W - 10, by + 70);
     doc.setFontSize(8);
     doc.text(T(L.pdf_signature), bx + 10, by + 81);
@@ -1292,18 +1272,10 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
     doc.setTextColor(0, 0, 0);
     if (i % 2 === 1 || i === signataires.length - 1) y += BOX_H + 12;
   });
-  if (signatures.length && signatures[0].empreinte) paragraphe(fill(L.pdf_fingerprint, { h: signatures[0].empreinte }), { size: 7.5, color: GRIS });
+  if (signatures.length && signatures[0].empreinte) paragraphe(fill(L.pdf_fingerprint, { h: signatures[0].empreinte }), { size: 7.5, italic: true });
 
-  // ----- Pied de page sur chaque page -----
-  const n = doc.internal.getNumberOfPages();
-  for (let p = 1; p <= n; p++) {
-    doc.setPage(p);
-    doc.setDrawColor(220, 224, 230); doc.setLineWidth(0.5);
-    doc.line(M, PAGE_H - 36, PAGE_W - M, PAGE_H - 36);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRIS);
-    doc.text(T(`${association?.nom || ""} - ${L.pdf_title} - ${el.titre || ""}`), M, PAGE_H - 24, { maxWidth: W - 90 });
-    doc.text(T(fill(L.pdf_page, { p, n })), PAGE_W - M, PAGE_H - 24, { align: "right" });
-  }
+  // ----- Pied de page officiel sur chaque page -----
+  piedsDePageOfficiels(doc, association, { marge: M, texte: `${L.pdf_title} - ${el.titre || ""}`, libellePage: (p, n) => fill(L.pdf_page, { p, n }) });
 
   const nomFichier = (el.titre || "election").normalize("NFD").replace(/[\u0300-\u036F]/g, "").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
   const fichier = `PV_${nomFichier || "election"}.pdf`;

@@ -9,6 +9,7 @@ import {
   CheckSquare, Square, MessageSquare, History, Copy, HeartHandshake, Award, Globe, Repeat, Users, FileDown, Send,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels } from "./pdfOfficiel";
 import { Section, Container, Card, Btn, Field, Table, Pill, StatCard, inputStyle, money, todayISO, useLang, TEAL, TEAL_LIGHT, RED, friendlyError, foldText } from "./shared";
 
 const AMBER = "#8A5A00";
@@ -21,26 +22,6 @@ const COLUMNS = [
 const STATUTS = ["propose", "actif", "en_pause", "termine", "annule"];
 const PRIORITES = ["basse", "normale", "haute"];
 const RECURRENCES = ["hebdomadaire", "mensuel"];
-
-// Même patron que Presences.jsx (logo → data URL pour jsPDF, import
-// dynamique de jspdf/jspdf-autotable) — dupliqué ici volontairement :
-// non exporté par Presences.jsx, et le budget de ce complément exclut
-// une refactorisation transverse.
-async function logoToDataUrl(logoUrl) {
-  if (!logoUrl) return null;
-  try {
-    const res = await fetch(logoUrl);
-    const blob = await res.blob();
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
 
 // ---------------------------------------------------------------------
 // Rapport d'impact (PDF) — généré à la clôture ou à tout moment sur un
@@ -60,14 +41,9 @@ async function buildImpactReportPdf({ t, association, project, tasks, budgetLine
   const marginX = 40;
   let y = 50;
 
-  const logoDataUrl = await logoToDataUrl(association?.logo_url);
-  if (logoDataUrl) {
-    try { doc.addImage(logoDataUrl, marginX, y - 30, 36, 36); } catch { /* format non pris en charge */ }
-  }
-  const textX = logoDataUrl ? marginX + 46 : marginX;
-
-  doc.setFontSize(18); doc.setTextColor(31, 56, 100); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || t("rap_org_fallback"), textX, y); y += 20;
+  // Logo + mentions légales (pdfOfficiel.js) — demande de l'utilisateur
+  // (2026-10-09) : sur tous les documents générés, pour leur authenticité.
+  y = await enTeteOfficiel(doc, association, { marge: marginX });
 
   doc.setFontSize(14); doc.setTextColor(31, 56, 100); doc.setFont(undefined, "bold");
   doc.text(t("proj_impact_report_title") + " — " + project.nom, marginX, y); y += 20;
@@ -119,6 +95,7 @@ async function buildImpactReportPdf({ t, association, project, tasks, budgetLine
     doc.text(lines, marginX, y);
   }
 
+  piedsDePageOfficiels(doc, association, { marge: marginX, texte: `${t("proj_impact_report_title")} - ${project.nom}` });
   return doc;
 }
 
