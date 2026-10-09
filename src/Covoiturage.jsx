@@ -22,11 +22,137 @@
 // script SQL pour le détail des simplifications assumées.
 // =====================================================================
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Car, Plus, Pencil, Trash2, MapPin, Calendar, Users, Repeat, Link2, Search, Send, Leaf, Calculator, Star, Check, X, Navigation, Phone, Mail, Sparkles, Map as MapIcon, Clock, Zap, Radio, Share2, AlertTriangle, Flag, Timer, Copy, ShieldCheck, Ban, MessageCircle, UserX, Globe, CalendarClock, Settings, FileText, FolderOpen } from "lucide-react";
+import { Car, Plus, Pencil, Trash2, MapPin, Calendar, Users, Repeat, Link2, Search, Send, Leaf, Calculator, Star, Check, X, Navigation, Phone, Mail, Sparkles, Map as MapIcon, Clock, Zap, Radio, Share2, AlertTriangle, Flag, Timer, Copy, ShieldCheck, Ban, MessageCircle, UserX, Globe, CalendarClock, Settings, FileText, FolderOpen, Crosshair, Wallet, Bell, Fuel, UserCircle, BarChart3 } from "lucide-react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "./supabaseClient";
-import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, money, useLang, friendlyError, foldText, TEAL, TEAL_LIGHT, RED, toDatetimeLocal, datetimeLocalToISO } from "./shared";
+import GrilleTarifaireCovoiturage from "./CovoiturageTarifs";
+import { FicheConducteurModal, ConducteursAdmin, VehiculePhoto, DriverAvatar } from "./CovoiturageConducteur";
+import EtatsPanel, { FicheTrajetModal } from "./CovoiturageEtats";
+import { prixSelonGrille, trancheLabel, covErr, vehiculeLabel, buildEtatRow, TXT_CONDUCTEUR } from "./covoiturageOutils";
+
+// ---------- Textes du covoiturage professionnel (2026-10-09, voir
+// sql/2026-10-09b_covoiturage_vehicule_tarifs.sql) — dictionnaire local
+// pour ne pas toucher shared.jsx (chantiers parallèles). ----------
+const TXT_PRO = {
+  fr: {
+    pin_btn: "Placer l'épingle sur la carte",
+    pin_title: "Placez l'épingle à l'endroit exact",
+    pin_help: "Faites glisser l'épingle ou touchez la carte. L'adresse est proposée automatiquement ; vous pouvez corriger le libellé (ex. « 85 Commerce St, Moncton »).",
+    pin_label: "Libellé de l'adresse",
+    pin_my_position: "Ma position",
+    pin_confirm: "Utiliser cet endroit",
+    pin_searching: "Recherche de l'adresse…",
+    geo_exact: "Position exacte enregistrée",
+    geo_approx: "Position approximative (numéro civique absent de la carte) — placez l'épingle pour être exact",
+    est_title: "Contribution aux frais de carburant",
+    est_line: "Durée estimée {min} · {km} km → tranche {tranche} : {montant} par passager",
+    est_line_free: "Durée estimée {min} · {km} km",
+    est_need_geo: "Choisissez une adresse suggérée ou placez l'épingle (départ et arrivée) pour calculer le prix selon la grille de l'association.",
+    est_loading: "Calcul de la durée estimée…",
+    price_label_grid: "Prix par passager (maximum {max})",
+    price_hint_grid: "Vous pouvez baisser ou mettre 0 pour offrir le trajet, jamais dépasser la grille.",
+    vehicle_label: "Véhicule",
+    vehicle_none: "Ajoutez votre véhicule dans « Ma fiche conducteur » pour publier une offre.",
+    photo_needed: "Une photo de profil est obligatoire pour publier une offre.",
+    open_fiche: "Ouvrir ma fiche conducteur",
+    per_passenger: "/ passager",
+    verified_driver: "Conducteur vérifié ✓",
+    res_price: "Contribution par passager",
+    res_frozen: "Prix calculé sur la durée estimée et figé au moment de la réservation.",
+    res_total: "Total pour {n} place(s)",
+    res_solidaire: "Tarif solidaire",
+    res_solid_none: "Aucun",
+    res_solid_etudiant: "Étudiant(e) (-{pct} %)",
+    res_solid_aine: "Aîné(e) (-{pct} %)",
+    res_solid_event: "Trajet vers un événement de l'association : -{pct} % appliqué automatiquement.",
+    res_wait_note: "Frais d'attente possibles : au-delà de {min} min d'attente au point de rendez-vous, {montant} par minute.",
+    res_real_note: "Le conducteur peut ajouter des frais réels déclarés (péage, stationnement).",
+    res_pay_note: "Paiement directement au conducteur (espèces ou Interac). L'association ne détient jamais l'argent.",
+    bk_amount: "Dû : {m}",
+    pay_non_paye: "Non payé", pay_declare_paye: "Déclaré payé", pay_paye: "Payé", pay_offert: "Offert",
+    bk_paid_cash: "J'ai payé (espèces)",
+    bk_paid_interac: "J'ai payé (Interac)",
+    bk_confirm_paid: "Confirmer le paiement reçu",
+    bk_unpaid: "Remettre « non payé »",
+    bk_remind: "Envoyer un rappel",
+    bk_reminded: "Rappel envoyé.",
+    bk_lower: "Baisser / offrir",
+    bk_lower_prompt: "Nouveau prix par passager (maximum {max}, 0 = offert) :",
+    bk_real: "Frais réels",
+    bk_real_amount_prompt: "Montant des frais réels (péage, stationnement) pour cette réservation :",
+    bk_real_desc_prompt: "Nature des frais (péage, stationnement…) :",
+    bk_plate: "Plaque",
+    bk_fiche: "Fiche trajet",
+    bk_wait_fee: "dont attente {m}",
+    bk_real_fee: "dont frais réels {m}",
+    tab_etats: "États",
+    grid_title: "Grille de l'association",
+    grid_beyond: "Au-delà de {a} min : {base}, puis + {plus} toutes les {n} min",
+    grid_note: "Contribution aux frais de carburant, par passager, selon la durée estimée du trajet.",
+  },
+  en: {
+    pin_btn: "Drop a pin on the map",
+    pin_title: "Drop the pin at the exact spot",
+    pin_help: "Drag the pin or tap the map. The address is suggested automatically; you can edit the label (e.g. “85 Commerce St, Moncton”).",
+    pin_label: "Address label",
+    pin_my_position: "My location",
+    pin_confirm: "Use this spot",
+    pin_searching: "Looking up the address…",
+    geo_exact: "Exact position saved",
+    geo_approx: "Approximate position (street number missing from the map) — drop a pin to be exact",
+    est_title: "Fuel cost contribution",
+    est_line: "Estimated time {min} · {km} km → bracket {tranche}: {montant} per passenger",
+    est_line_free: "Estimated time {min} · {km} km",
+    est_need_geo: "Pick a suggested address or drop a pin (start and destination) to compute the price from the association's grid.",
+    est_loading: "Computing estimated time…",
+    price_label_grid: "Price per passenger (maximum {max})",
+    price_hint_grid: "You may lower it or enter 0 to offer the ride, never exceed the grid.",
+    vehicle_label: "Vehicle",
+    vehicle_none: "Add your vehicle in “My driver profile” to publish an offer.",
+    photo_needed: "A profile photo is required to publish an offer.",
+    open_fiche: "Open my driver profile",
+    per_passenger: "/ passenger",
+    verified_driver: "Verified driver ✓",
+    res_price: "Contribution per passenger",
+    res_frozen: "Price based on the estimated time and locked when you book.",
+    res_total: "Total for {n} seat(s)",
+    res_solidaire: "Solidarity rate",
+    res_solid_none: "None",
+    res_solid_etudiant: "Student (-{pct} %)",
+    res_solid_aine: "Senior (-{pct} %)",
+    res_solid_event: "Ride to an association event: -{pct} % applied automatically.",
+    res_wait_note: "Possible waiting fee: beyond {min} min of waiting at pickup, {montant} per minute.",
+    res_real_note: "The driver may add declared actual costs (tolls, parking).",
+    res_pay_note: "Pay the driver directly (cash or Interac). The association never holds the money.",
+    bk_amount: "Due: {m}",
+    pay_non_paye: "Unpaid", pay_declare_paye: "Reported paid", pay_paye: "Paid", pay_offert: "Free",
+    bk_paid_cash: "I paid (cash)",
+    bk_paid_interac: "I paid (Interac)",
+    bk_confirm_paid: "Confirm payment received",
+    bk_unpaid: "Mark as unpaid",
+    bk_remind: "Send a reminder",
+    bk_reminded: "Reminder sent.",
+    bk_lower: "Lower / offer",
+    bk_lower_prompt: "New price per passenger (maximum {max}, 0 = free):",
+    bk_real: "Actual costs",
+    bk_real_amount_prompt: "Actual costs (tolls, parking) for this booking:",
+    bk_real_desc_prompt: "Type of cost (toll, parking…):",
+    bk_plate: "Plate",
+    bk_fiche: "Ride sheet",
+    bk_wait_fee: "incl. waiting {m}",
+    bk_real_fee: "incl. actual costs {m}",
+    tab_etats: "Statements",
+    grid_title: "Association price grid",
+    grid_beyond: "Beyond {a} min: {base}, then + {plus} every {n} min",
+    grid_note: "Fuel cost contribution, per passenger, based on the estimated trip time.",
+  },
+};
+function useTxtPro() {
+  const { lang } = useLang();
+  return TXT_PRO[lang === "en" ? "en" : "fr"];
+}
+import { Section, Container, Card, Btn, Field, StatCard, Pill, inputStyle, money, useLang, foldText, TEAL, TEAL_LIGHT, RED, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 // ---------- Suggestions de messages/signalements préétablis (volet
 // Paramètres uniquement — rien n'est créé en base tant que le bureau ne
@@ -50,102 +176,106 @@ const AMBER = "#8A5A00";
 const AMBER_LIGHT = "#FDF3DF";
 const overlay = { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 };
 
-// ---------- Géocodage gratuit (Nominatim/OpenStreetMap), best-effort ----------
-// Convertit le texte déjà saisi (point_depart/point_arrivee) en
-// coordonnées GPS, pour alimenter le matching géospatial côté base de
-// données (sql/2026-10-07_covoiturage_dispatch_sophistique.sql). Échec
-// silencieux : si le géocodage ne trouve rien (adresse vague, service
-// indisponible), le trajet reste utilisable normalement dans le
-// babillard — simplement absent du matching pondéré/dispatch, qui
-// nécessite des coordonnées des deux côtés.
-async function geocodeAddress(text) {
-  if (!text || !text.trim()) return null;
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(text.trim())}`, {
-      headers: { "Accept-Language": "fr" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data && data[0] && data[0].lat && data[0].lon) return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
-  } catch { /* best-effort — voir commentaire ci-dessus */ }
-  return null;
+// ---------- Géocodage gratuit (Nominatim/OpenStreetMap), sans clé ----------
+// 2026-10-09 (« GPS trop approximatif ») : les recherches sont désormais
+// LIMITÉES au pays de l'association (countrycodes, déduit de sa devise) et
+// BIAISÉES vers sa région (viewbox autour de la dernière position connue,
+// sinon de l'adresse de l'association) — fini les suggestions au Cameroun
+// pour une association de Moncton. Les libellés sont courts (« 85 Commerce
+// St, Moncton ») et, comme les numéros civiques manquent souvent dans
+// OpenStreetMap, le bouton « Placer l'épingle sur la carte » (PinPickerModal)
+// permet d'enregistrer les coordonnées EXACTES. Échec silencieux comme
+// avant : sans coordonnées, le trajet reste visible au babillard.
+const COUNTRY_BY_CURRENCY = { CAD: "ca", USD: "us", EUR: "fr,be,lu", CHF: "ch", GBP: "gb", XAF: "cm,ga,cg,td,cf,gq", XOF: "sn,ci,bj,bf,ml,ne,tg,gw", MAD: "ma", TND: "tn", DZD: "dz", HTG: "ht", NGN: "ng", GHS: "gh", CDF: "cd", RWF: "rw", KES: "ke" };
+const DEFAULT_CENTER = { lat: 46.0878, lng: -64.7782 }; // Moncton (N.-B.)
+const geoContext = { countrycodes: "ca", center: null, assocId: null };
+function regionKey(assocId) { return `unia_cov_region_${assocId || "x"}`; }
+function rememberRegion(pt) {
+  if (!pt || pt.lat == null || pt.lng == null) return;
+  geoContext.center = { lat: pt.lat, lng: pt.lng };
+  try { localStorage.setItem(regionKey(geoContext.assocId), JSON.stringify(geoContext.center)); } catch { /* stockage indisponible : biais pour cette session seulement */ }
 }
-
-// ---------- Assistant de saisie d'adresse (autocomplétion) ----------
-// Suggestions en direct via Nominatim (même service gratuit que le
-// géocodage ci-dessus, sans clé) pendant la frappe — demandé par
-// l'utilisateur pour faciliter la validation visuelle de l'adresse.
-// Bénéfice supplémentaire : choisir une suggestion fixe immédiatement
-// ses coordonnées GPS exactes (renvoyées par Nominatim avec le
-// résultat), ce qui évite complètement le risque d'échec silencieux du
-// géocodage "après coup" à la soumission (voir cov_geocode_missing_
-// warning plus haut) — mais reste facultatif, on peut toujours taper
-// librement sans choisir de suggestion (le géocodage de repli s'applique
-// alors comme avant).
-// Requête Nominatim "structurée" (rue/ville séparées plutôt qu'un seul
-// texte libre) — généralement plus précise au numéro civique près quand
-// l'adresse est bien formée, parce que le moteur n'a pas à deviner quel
-// mot est la rue et lequel est la ville. Utilisée en complément de la
-// recherche libre ci-dessous, jamais seule (une adresse mal découpée en
-// structuré renvoie simplement 0 résultat, sans casser la recherche
-// libre en parallèle).
-async function fetchNominatimStructured(streetPart, cityPart, signal) {
-  if (!streetPart) return [];
-  const params = new URLSearchParams({ format: "json", addressdetails: "1", limit: "5", street: streetPart });
-  if (cityPart) params.set("city", cityPart);
+function nominatimBiasParams() {
+  const p = { countrycodes: geoContext.countrycodes };
+  const c = geoContext.center;
+  // viewbox = simple préférence (bounded absent) : ~65 km autour du centre.
+  if (c) p.viewbox = `${c.lng - 0.9},${c.lat + 0.6},${c.lng + 0.9},${c.lat - 0.6}`;
+  return p;
+}
+// Libellé court construit depuis addressdetails. Si OSM n'a pas le numéro
+// civique mais que le membre l'a tapé (« 85 Commerce St »), on le garde.
+function shortLabel(s, typed) {
+  const a = s?.address || {};
+  const road = a.road || a.pedestrian || a.footway || a.residential || a.path || a.square || null;
+  const typedNum = (typed || "").trim().match(/^(\d+[A-Za-z]?)\s/)?.[1];
+  const num = a.house_number || (road && typedNum ? typedNum : null);
+  const city = a.city || a.town || a.village || a.municipality || a.hamlet || a.suburb || a.county || null;
+  const first = road ? [num, road].filter(Boolean).join(" ") : (s?.name || (s?.display_name || "").split(",")[0]);
+  return [first, city && city !== first ? city : null].filter(Boolean).join(", ") || s?.display_name || "";
+}
+async function nominatimSearch(params, signal) {
+  const q = new URLSearchParams({ format: "json", addressdetails: "1", limit: "6", ...nominatimBiasParams(), ...params });
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
-      headers: { "Accept-Language": "fr" }, signal,
-    });
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?${q.toString()}`, { headers: { "Accept-Language": "fr" }, signal });
     if (!res.ok) return [];
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch { return []; }
 }
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&zoom=18&lat=${lat}&lon=${lng}`, { headers: { "Accept-Language": "fr" } });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+async function geocodeAddress(text) {
+  if (!text || !text.trim()) return null;
+  const data = await nominatimSearch({ q: text.trim(), limit: "1" });
+  if (data[0]?.lat && data[0]?.lon) return { lat: Number(data[0].lat), lng: Number(data[0].lon) };
+  return null;
+}
 
-function AddressAutocomplete({ t, value, onChange, onSelect, placeholder }) {
+// ---------- Assistant de saisie d'adresse (autocomplétion + épingle) ----------
+// Recherche libre + recherche structurée (rue/ville séparées) quand le
+// texte contient une virgule, résultats avec numéro civique exact en tête.
+// `geo` = coordonnées actuellement retenues (affiche exact/approximatif).
+function AddressAutocomplete({ value, onChange, onSelect, placeholder, geo }) {
+  const P = useTxtPro();
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
+  const [pinOpen, setPinOpen] = useState(false);
   const debounceRef = useRef(null);
   const abortRef = useRef(null);
   const boxRef = useRef(null);
+  const skipNextRef = useRef(false); // évite de relancer une recherche juste après un choix
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!value || value.trim().length < 3) { setSuggestions([]); setOpen(false); return; }
+    if (skipNextRef.current) { skipNextRef.current = false; return undefined; }
+    if (!value || value.trim().length < 3) { setSuggestions([]); setOpen(false); return undefined; }
     debounceRef.current = setTimeout(async () => {
       if (abortRef.current) abortRef.current.abort();
       const ctrl = new AbortController();
       abortRef.current = ctrl;
-      try {
-        // Recherche libre (comme avant) + recherche structurée en
-        // parallèle quand l'adresse tapée contient déjà une virgule
-        // ("85 Commerce Street, Moncton" → rue="85 Commerce Street",
-        // ville="Moncton") — combinées, dédupliquées, puis triées pour
-        // faire remonter en premier les résultats avec un numéro civique
-        // exact (address.house_number) plutôt qu'un simple tronçon de
-        // rue, qui était le problème signalé ("trop approximatif").
-        const parts = value.trim().split(",").map((p) => p.trim()).filter(Boolean);
-        const [freeform, structured] = await Promise.all([
-          fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(value.trim())}`, {
-            headers: { "Accept-Language": "fr" }, signal: ctrl.signal,
-          }).then((r) => (r.ok ? r.json() : [])).catch(() => []),
-          parts.length >= 2 ? fetchNominatimStructured(parts[0], parts[1], ctrl.signal) : Promise.resolve([]),
-        ]);
-        const merged = [...(Array.isArray(structured) ? structured : []), ...(Array.isArray(freeform) ? freeform : [])];
-        const seen = new Set();
-        const deduped = [];
-        for (const s of merged) {
-          const key = s.place_id ?? s.display_name;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          deduped.push(s);
-        }
-        deduped.sort((a, b) => (b.address?.house_number ? 1 : 0) - (a.address?.house_number ? 1 : 0));
-        setSuggestions(deduped.slice(0, 6));
-        setOpen(true);
-      } catch { /* requête annulée ou service indisponible — la saisie libre reste possible */ }
-    }, 400); // anti-rafale : une seule paire de requêtes Nominatim par pause de frappe
+      const parts = value.trim().split(",").map((p) => p.trim()).filter(Boolean);
+      const [freeform, structured] = await Promise.all([
+        nominatimSearch({ q: value.trim() }, ctrl.signal),
+        parts.length >= 2 ? nominatimSearch({ street: parts[0], city: parts[1] }, ctrl.signal) : Promise.resolve([]),
+      ]);
+      if (ctrl.signal.aborted) return;
+      const seen = new Set();
+      const deduped = [];
+      for (const s of [...structured, ...freeform]) {
+        const key = s.place_id ?? s.display_name;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(s);
+      }
+      deduped.sort((a, b) => (b.address?.house_number ? 1 : 0) - (a.address?.house_number ? 1 : 0));
+      setSuggestions(deduped.slice(0, 6));
+      setOpen(true);
+    }, 400); // anti-rafale : une seule paire de requêtes par pause de frappe
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [value]);
 
@@ -156,8 +286,11 @@ function AddressAutocomplete({ t, value, onChange, onSelect, placeholder }) {
   }, []);
 
   function pick(s) {
-    onChange(s.display_name);
-    onSelect({ lat: Number(s.lat), lng: Number(s.lon) });
+    const pt = { lat: Number(s.lat), lng: Number(s.lon), precise: !!s.address?.house_number };
+    skipNextRef.current = true;
+    onChange(shortLabel(s, value));
+    onSelect(pt);
+    rememberRegion(pt);
     setOpen(false);
     setSuggestions([]);
   }
@@ -178,14 +311,112 @@ function AddressAutocomplete({ t, value, onChange, onSelect, placeholder }) {
                 style={{ display: "flex", alignItems: "flex-start", gap: 6, width: "100%", textAlign: "left", padding: "8px 10px", border: "none", background: "white", cursor: "pointer", fontSize: 12.5, borderBottom: i < suggestions.length - 1 ? "1px solid #F1F2F4" : "none" }}>
                 <MapPin size={12} style={{ marginTop: 2, flexShrink: 0, color: precise ? TEAL : "#C9A227" }} />
                 <span>
-                  {s.display_name}
-                  {!precise && <span style={{ display: "block", fontSize: 10.5, color: "#C9A227", marginTop: 2 }}>{t("cov_address_suggestion_approx")}</span>}
+                  <strong style={{ fontWeight: 600 }}>{shortLabel(s, value)}</strong>
+                  <span style={{ display: "block", fontSize: 10.5, color: "#8A8F98", marginTop: 1 }}>{s.display_name}</span>
+                  {!precise && <span style={{ display: "block", fontSize: 10.5, color: "#C9A227", marginTop: 2 }}>{P.geo_approx}</span>}
                 </span>
               </button>
             );
           })}
         </div>
       )}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 5 }}>
+        <button type="button" onClick={() => setPinOpen(true)} style={linkBtn("var(--primary)")}><Crosshair size={12} /> {P.pin_btn}</button>
+        {geo && geo.lat != null && (
+          <span style={{ fontSize: 11, color: geo.precise || geo.pinned ? TEAL : "#C9A227" }}>
+            {geo.precise || geo.pinned ? `✓ ${P.geo_exact}` : P.geo_approx}
+          </span>
+        )}
+      </div>
+      {pinOpen && (
+        <PinPickerModal P={P} initial={geo} onClose={() => setPinOpen(false)}
+          onConfirm={(label, pt) => {
+            skipNextRef.current = true;
+            onChange(label);
+            onSelect({ ...pt, precise: true, pinned: true });
+            rememberRegion(pt);
+            setPinOpen(false);
+          }} />
+      )}
+    </div>
+  );
+}
+
+// ---------- Épingle déplaçable sur une carte Leaflet (OSM, sans clé) ----------
+// Repère en emoji (L.divIcon) : évite les icônes Leaflet par défaut dont
+// les images sont introuvables sous Vite. Géocodage inverse (Nominatim)
+// pour proposer le libellé ; les coordonnées enregistrées sont celles de
+// l'épingle, au mètre près.
+const PIN_ICON = L.divIcon({ className: "", html: '<div style="font-size:30px;line-height:30px;text-align:center;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))">📍</div>', iconSize: [30, 30], iconAnchor: [15, 30] });
+function PinPickerModal({ P, initial, onClose, onConfirm }) {
+  const hasInitial = initial && initial.lat != null && initial.lng != null;
+  const [start] = useState(() => (hasInitial ? { lat: initial.lat, lng: initial.lng, zoom: 17 } : { ...(geoContext.center || DEFAULT_CENTER), zoom: geoContext.center ? 14 : 12 }));
+  const elRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const [pt, setPt] = useState({ lat: start.lat, lng: start.lng });
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const labelEditedRef = useRef(false);
+
+  useEffect(() => {
+    if (!elRef.current || mapRef.current) return undefined;
+    const s = start;
+    const map = L.map(elRef.current, { zoomControl: true }).setView([s.lat, s.lng], s.zoom);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+    const marker = L.marker([s.lat, s.lng], { draggable: true, icon: PIN_ICON }).addTo(map);
+    marker.on("dragend", () => { const ll = marker.getLatLng(); labelEditedRef.current = false; setPt({ lat: ll.lat, lng: ll.lng }); });
+    map.on("click", (e) => { marker.setLatLng(e.latlng); labelEditedRef.current = false; setPt({ lat: e.latlng.lat, lng: e.latlng.lng }); });
+    mapRef.current = map;
+    markerRef.current = marker;
+    const id = setTimeout(() => { try { map.invalidateSize(); } catch { /* fenêtre déjà fermée */ } }, 60);
+    return () => { clearTimeout(id); map.remove(); mapRef.current = null; markerRef.current = null; };
+  }, [start]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      setBusy(true);
+      const r = await reverseGeocode(pt.lat, pt.lng);
+      if (cancelled) return;
+      if (!labelEditedRef.current) setLabel(r ? shortLabel(r, "") : `${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}`);
+      setBusy(false);
+    }, 500);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [pt.lat, pt.lng]);
+
+  function useMyPosition() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const ll = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      markerRef.current?.setLatLng([ll.lat, ll.lng]);
+      mapRef.current?.setView([ll.lat, ll.lng], 17);
+      labelEditedRef.current = false;
+      setPt(ll);
+    }, () => { /* refusée : l'épingle reste déplaçable à la main */ }, { enableHighAccuracy: true, timeout: 15000 });
+  }
+
+  return (
+    <div style={{ ...overlay, zIndex: 1100 }} onClick={(e) => { e.stopPropagation(); onClose(); }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 16, padding: 18, maxWidth: 560, width: "100%", maxHeight: "92vh", overflowY: "auto" }}>
+        <h3 style={{ marginBottom: 4, display: "flex", alignItems: "center", gap: 8, fontSize: 16 }}><Crosshair size={16} color={TEAL} /> {P.pin_title}</h3>
+        <p style={{ fontSize: 12, color: "#5B6270", marginBottom: 10 }}>{P.pin_help}</p>
+        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid #DCE0E8", height: 320, marginBottom: 10 }}>
+          <div ref={elRef} style={{ width: "100%", height: "100%" }} />
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <button type="button" onClick={useMyPosition} style={linkBtn(TEAL)}><Navigation size={12} /> {P.pin_my_position}</button>
+          <span style={{ fontSize: 11, color: "#8A8F98" }}>{pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}</span>
+          {busy && <span style={{ fontSize: 11, color: "#8A8F98" }}>{P.pin_searching}</span>}
+        </div>
+        <Field label={P.pin_label}>
+          <input style={inputStyle} value={label} onChange={(e) => { labelEditedRef.current = true; setLabel(e.target.value); }} />
+        </Field>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <Btn variant="outline" onClick={onClose}><X size={13} /></Btn>
+          <Btn onClick={() => onConfirm(label.trim() || `${pt.lat.toFixed(5)}, ${pt.lng.toFixed(5)}`, pt)}><Check size={13} /> {P.pin_confirm}</Btn>
+        </div>
+      </div>
     </div>
   );
 }
@@ -246,9 +477,39 @@ export default function Covoiturage({ profile, isBureau, association }) {
   const [incidents, setIncidents] = useState([]); // signalements (panneau Administration, suite 2026-10-08)
   const [adminMemberSearch, setAdminMemberSearch] = useState(""); // recherche dans le registre des membres (Administration)
   const [quickMessages, setQuickMessages] = useState([]); // messages/signalements préétablis (volet Paramètres, suite 2026-10-08)
+  // Covoiturage professionnel (2026-10-09, sql/2026-10-09b) : grille
+  // tarifaire active, véhicules, plaques (filtrées par RLS : seulement les
+  // miennes, celles de mes trajets confirmés, ou toutes pour le bureau),
+  // documents (les miens, ou tous pour le bureau).
+  const P = useTxtPro();
+  const [proSql, setProSql] = useState(false); // false tant que sql/2026-10-09b n'a pas été exécuté
+  const [grille, setGrille] = useState(null);
+  const [vehicules, setVehicules] = useState([]);
+  const [plaques, setPlaques] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [showFiche, setShowFiche] = useState(false);
+  const [ficheBooking, setFicheBooking] = useState(null);
+
+  // Contexte régional du géocodage : pays (selon la devise) + centre
+  // (dernière position retenue, sinon adresse de l'association).
+  useEffect(() => {
+    geoContext.assocId = profile.association_id;
+    geoContext.countrycodes = COUNTRY_BY_CURRENCY[(association?.devise_monetaire || "CAD").toUpperCase()] || "ca";
+    let stored = null;
+    try { stored = JSON.parse(localStorage.getItem(regionKey(profile.association_id)) || "null"); } catch { /* stockage indisponible */ }
+    if (stored?.lat != null) { geoContext.center = stored; return; }
+    geoContext.center = null;
+    if (association?.adresse) geocodeAddress(association.adresse).then((pt) => { if (pt) rememberRegion(pt); });
+  }, [profile.association_id, association?.devise_monetaire, association?.adresse]);
 
   function reportError(error) {
-    if (error) { console.error("[Covoiturage]", error); setErrorMsg(friendlyError(error, t)); return true; }
+    if (error) {
+      console.error("[Covoiturage]", error);
+      const msg = covErr(error, t);
+      setErrorMsg(msg);
+      if (error.code === "P0001") window.alert(msg); // refus métier (prix au-dessus de la grille, photo manquante…)
+      return true;
+    }
     return false;
   }
 
@@ -260,7 +521,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
       supabase.from("events").select("id,titre,lieu,date_debut").eq("association_id", profile.association_id),
       supabase.from("carpool_bookings").select("*").eq("association_id", profile.association_id).order("created_at", { ascending: false }),
       supabase.from("carpool_ratings").select("*").eq("association_id", profile.association_id),
-      supabase.from("members").select("id,nom,telephone,email,covoiturage_verifie,covoiturage_suspendu,covoiturage_suspendu_motif").eq("association_id", profile.association_id),
+      supabase.from("members").select("id,nom,telephone,email,photo_url,covoiturage_verifie,covoiturage_suspendu,covoiturage_suspendu_motif").eq("association_id", profile.association_id),
       supabase.from("carpool_dispatch_rounds").select("*").eq("association_id", profile.association_id).eq("statut", "en_attente"),
       supabase.from("carpool_live_positions").select("*").eq("association_id", profile.association_id),
       supabase.from("carpool_availability_beacons").select("*").eq("association_id", profile.association_id).eq("statut", "active"),
@@ -278,6 +539,18 @@ export default function Covoiturage({ profile, isBureau, association }) {
       // sql/2026-10-08l n'a pas été exécuté.
       supabase.from("carpool_quick_messages").select("*").eq("association_id", profile.association_id).order("ordre"),
     ]);
+    // Covoiturage professionnel (sql/2026-10-09b) — tolérant comme le reste.
+    const [grilleRes, vehRes, plaqueRes, docRes] = await Promise.all([
+      supabase.from("carpool_tarif_grilles").select("*").eq("association_id", profile.association_id).eq("actif", true).maybeSingle(),
+      supabase.from("carpool_vehicules").select("*").eq("association_id", profile.association_id),
+      supabase.from("carpool_vehicule_plaques").select("*").eq("association_id", profile.association_id),
+      supabase.from("carpool_documents_conducteur").select("*").eq("association_id", profile.association_id),
+    ]);
+    setProSql(!grilleRes?.error);
+    setGrille(grilleRes?.error ? null : (grilleRes.data || null));
+    setVehicules(vehRes?.error ? [] : (vehRes.data || []));
+    setPlaques(plaqueRes?.error ? [] : (plaqueRes.data || []));
+    setDocuments(docRes?.error ? [] : (docRes.data || []));
     // Requêtes tolérantes : listes vides tant que les scripts SQL n'ont
     // pas été exécutés, plutôt que de faire échouer tout le module.
     setOffers(offerRes?.error ? [] : (offerRes.data || []));
@@ -343,6 +616,10 @@ export default function Covoiturage({ profile, isBureau, association }) {
   }, [bookings, offerOwnerOf]);
   const myRatingFor = useCallback((bookingId) => ratings.find((r) => r.booking_id === bookingId && r.rater_member_id === profile.member_id), [ratings, profile.member_id]);
   const memberContact = useCallback((memberId) => members.find((m) => m.id === memberId), [members]);
+  const me = useMemo(() => members.find((m) => m.id === profile.member_id) || null, [members, profile.member_id]);
+  const myVehicles = useMemo(() => vehicules.filter((v) => v.member_id === profile.member_id && v.actif !== false), [vehicules, profile.member_id]);
+  const vehiculeFor = useCallback((id) => (id ? vehicules.find((v) => v.id === id) || null : null), [vehicules]);
+  const plaqueFor = useCallback((id) => (id ? plaques.find((p) => p.vehicule_id === id)?.plaque || null : null), [plaques]);
   // Avis textuels (carpool_ratings.commentaire existe depuis sql/2026-10-
   // 06b mais n'était jamais affiché) — les plus récents d'abord.
   const commentsFor = useCallback((memberId) => ratings.filter((r) => r.rated_member_id === memberId && r.commentaire && r.commentaire.trim()).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)), [ratings]);
@@ -459,7 +736,17 @@ export default function Covoiturage({ profile, isBureau, association }) {
       form.departGeo ? Promise.resolve(form.departGeo) : geocodeAddress(form.point_depart),
       form.arriveeGeo ? Promise.resolve(form.arriveeGeo) : geocodeAddress(form.point_arrivee),
     ]);
+    // Durée ESTIMÉE (itinéraire OSRM, repli à vol d'oiseau) : base du prix
+    // selon la grille de l'association, recalculé et plafonné en base.
+    let eta = form.eta || null;
+    if (!eta && depart && arrivee) eta = await fetchRouteEta(depart.lat, depart.lng, arrivee.lat, arrivee.lng);
+    const pro = proSql ? {
+      vehicule_id: form.vehicule_id || null,
+      duree_estimee_min: eta ? Math.round((eta.durationSec / 60) * 10) / 10 : null,
+      distance_estimee_m: eta ? Math.round(eta.distanceM) : null,
+    } : {};
     const { data, error } = await supabase.from("carpool_offers").insert({
+      ...pro,
       association_id: profile.association_id, member_id: profile.member_id, member_nom: profile.nom_complet,
       point_depart: form.point_depart.trim(), point_arrivee: form.point_arrivee.trim(),
       date_heure: datetimeLocalToISO(form.date_heure), recurrence: form.recurrence, places_disponibles: Number(form.places_disponibles) || 1,
@@ -617,8 +904,16 @@ export default function Covoiturage({ profile, isBureau, association }) {
     await load(true);
   }
 
-  async function reserve(offerId, seats, message, requestId) {
-    const { data, error } = await supabase.rpc("reserver_trajet_covoiturage", { p_offer_id: offerId, p_seats: seats, p_message: message || null, p_request_id: requestId || null });
+  async function reserve(offerId, seats, message, requestId, solidaire) {
+    // Réservation avec prix figé (sql/2026-10-09b) ; repli sur l'ancienne
+    // fonction tant que le script n'a pas été exécuté.
+    const base = { p_offer_id: offerId, p_seats: seats, p_message: message || null, p_request_id: requestId || null };
+    let { data, error } = proSql
+      ? await supabase.rpc("reserver_trajet_covoiturage_tarif", { ...base, p_solidaire_motif: solidaire || null })
+      : await supabase.rpc("reserver_trajet_covoiturage", base);
+    if (error && proSql && (error.code === "PGRST202" || /reserver_trajet_covoiturage_tarif/.test(error.message || ""))) {
+      ({ data, error } = await supabase.rpc("reserver_trajet_covoiturage", base));
+    }
     if (reportError(error)) return false;
     const status = data?.[0]?.status;
     if (status === "ok") { await load(); return true; }
@@ -628,6 +923,38 @@ export default function Covoiturage({ profile, isBureau, association }) {
     else alert(t("cov_reserve_failed_generic"));
     return false;
   }
+  // ---------- Prix figé, frais et paiement entre membres (sql/2026-10-09b) ----------
+  // L'application enregistre seulement payé / non payé + rappels ;
+  // l'argent passe directement du passager au conducteur.
+  async function rpcPro(name, args, okMsg) {
+    const { error } = await supabase.rpc(name, args);
+    if (reportError(error)) return false;
+    if (okMsg) window.alert(okMsg);
+    await load(true);
+    return true;
+  }
+  const paymentActions = {
+    onPayment: (bookingId, statut, mode) => rpcPro("marquer_paiement_covoiturage", { p_booking_id: bookingId, p_statut: statut, p_mode: mode || null }),
+    onRemind: (bookingId) => rpcPro("rappeler_paiement_covoiturage", { p_booking_id: bookingId }, P.bk_reminded),
+    onLowerPrice: (booking) => {
+      const max = booking.prix_grille_unitaire ?? booking.prix_unitaire;
+      const v = window.prompt(P.bk_lower_prompt.replace("{max}", money(max ?? 0, devise)), String(booking.prix_unitaire ?? ""));
+      if (v === null || v.trim() === "") return;
+      const n = Number(v.replace(",", "."));
+      if (!isFinite(n) || n < 0) return;
+      rpcPro("ajuster_prix_covoiturage", { p_booking_id: booking.id, p_prix_unitaire: n });
+    },
+    onRealCosts: (booking) => {
+      const v = window.prompt(P.bk_real_amount_prompt, String(booking.frais_reels || ""));
+      if (v === null || v.trim() === "") return;
+      const n = Number(v.replace(",", "."));
+      if (!isFinite(n) || n < 0) return;
+      const desc = n > 0 ? window.prompt(P.bk_real_desc_prompt, booking.frais_reels_description || "") : "";
+      if (desc === null) return;
+      rpcPro("declarer_frais_reels_covoiturage", { p_booking_id: booking.id, p_montant: n, p_description: desc || null });
+    },
+    onOpenFiche: (booking) => setFicheBooking(booking),
+  };
   async function respondBooking(bookingId, accepter) {
     const { data, error } = await supabase.rpc("repondre_reservation_covoiturage", { p_booking_id: bookingId, p_accepter: accepter });
     if (reportError(error)) return;
@@ -763,6 +1090,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
               ) : (
                 <Btn variant="outline" onClick={() => setShowAvailability(true)}><Radio size={14} /> {t("cov_available_now_btn")}</Btn>
               )}
+              <Btn variant="outline" onClick={() => setShowFiche(true)}><UserCircle size={14} /> {TXT_CONDUCTEUR[lang === "en" ? "en" : "fr"].my_driver_btn}</Btn>
               <Btn onClick={() => setShowCreate(true)}><Plus size={14} /> {t("cov_new_btn")}</Btn>
             </div>
           )}
@@ -837,6 +1165,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
             <button onClick={() => setTab("reservations")} style={tabBtn(tab === "reservations")}>
               {t("cov_tab_bookings")} ({bookings.length}){pendingReceivedCount > 0 && <span style={{ marginLeft: 6, background: AMBER, color: "white", borderRadius: 999, fontSize: 10.5, padding: "1px 6px" }}>{pendingReceivedCount}</span>}
             </button>
+            <button onClick={() => setTab("etats")} style={tabBtn(tab === "etats")}><BarChart3 size={12} style={{ marginRight: 4 }} /> {P.tab_etats}</button>
             {isBureau && (
               <button onClick={() => setTab("administration")} style={tabBtn(tab === "administration")}>
                 {t("cov_tab_admin")}{adminStats.openIncidents > 0 && <span style={{ marginLeft: 6, background: RED, color: "white", borderRadius: 999, fontSize: 10.5, padding: "1px 6px" }}>{adminStats.openIncidents}</span>}
@@ -848,13 +1177,13 @@ export default function Covoiturage({ profile, isBureau, association }) {
               </button>
             )}
           </div>
-          {tab !== "reservations" && tab !== "administration" && tab !== "parametres" && (
+          {(tab === "offres" || tab === "demandes") && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, background: "white", border: "1.5px solid #DCE0E8", borderRadius: 999, padding: "7px 14px", flex: "1 1 220px", maxWidth: 320 }}>
               <Search size={14} color="#9AA2B5" />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("cov_search_placeholder")} style={{ border: "none", outline: "none", fontSize: 13, flex: 1 }} />
             </div>
           )}
-          {tab !== "reservations" && tab !== "administration" && tab !== "parametres" && eventFilter && (
+          {(tab === "offres" || tab === "demandes") && eventFilter && (
             <Pill color="#1F3864" bg="#EEF1F8">
               {t("cov_events_filter_active").replace("{titre}", events.find((e) => e.id === eventFilter)?.titre || "—")}
               <button onClick={() => setEventFilter("")} style={{ background: "none", border: "none", cursor: "pointer", marginLeft: 6, color: "#1F3864" }}>✕</button>
@@ -863,6 +1192,11 @@ export default function Covoiturage({ profile, isBureau, association }) {
         </div>
 
         {tab === "administration" ? (
+          <>
+          <div style={{ marginBottom: 28 }}>
+            <ConducteursAdmin members={members} offers={offers} vehicules={vehicules} plaques={plaques} documents={documents}
+              onToggleVerify={toggleVerifieMembre} onChanged={() => load(true)} />
+          </div>
           <AdministrationPanel t={t} lang={lang} devise={devise}
             adminStats={adminStats} incidents={incidents} incidentContext={incidentContext}
             onTraiterSignalement={traiterSignalement}
@@ -871,12 +1205,19 @@ export default function Covoiturage({ profile, isBureau, association }) {
             bookingStatutOrder={BOOKING_STATUTS_ORDER}
             registreRows={registreRows} buildDriverDossier={buildDriverDossier}
           />
+          </>
         ) : tab === "parametres" ? (
-          <ParametresPanel t={t}
-            quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif}
-            onToggleMessagesRapides={toggleMessagesRapides}
-            onAddQuickMessage={addQuickMessage} onToggleQuickMessageActif={toggleQuickMessageActif} onDeleteQuickMessage={deleteQuickMessage}
-          />
+          <>
+            <ParametresPanel t={t}
+              quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif}
+              onToggleMessagesRapides={toggleMessagesRapides}
+              onAddQuickMessage={addQuickMessage} onToggleQuickMessageActif={toggleQuickMessageActif} onDeleteQuickMessage={deleteQuickMessage}
+            />
+            <GrilleTarifaireCovoiturage profile={profile} association={association} onSaved={() => load(true)} />
+          </>
+        ) : tab === "etats" ? (
+          <EtatsPanel t={t} lang={lang} devise={devise} profile={profile} isBureau={isBureau}
+            bookings={bookings} offers={offers} members={members} vehicules={vehicules} />
         ) : tab === "reservations" ? (
           <BookingsPanel t={t} lang={lang} devise={devise}
             received={myBookingsReceived} sent={myBookingsSent}
@@ -900,6 +1241,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
             onSendMessage={sendCarpoolMessage}
             quickMessages={quickMessages}
             messagesRapidesActif={messagesRapidesActif}
+            pro={{ P, devise, vehiculeFor, plaqueFor, fraisReelsActif: !!grille?.frais_reels_actif, ...paymentActions }}
           />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.6fr) minmax(260px,1fr)", gap: 20, alignItems: "start" }}>
@@ -917,6 +1259,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
                   onEdit={() => setEditing({ kind: "offre", row: o })}
                   onRetryGeocode={() => retryGeocode("offre", o)}
                   onToggleVerify={toggleVerifieMembre} onToggleSuspend={toggleSuspendreMembre}
+                  pro={{ P, vehicule: vehiculeFor(o.vehicule_id), photoUrl: memberContact(o.member_id)?.photo_url }}
                 />
               ))}
               {tab === "demandes" && filteredRequests.length === 0 && <p style={{ color: "#686F7D", fontStyle: "italic", fontSize: 13 }}>{t("cov_requests_empty")}</p>}
@@ -941,25 +1284,35 @@ export default function Covoiturage({ profile, isBureau, association }) {
                 />
               ))}
             </div>
-            <CostShareCalculator t={t} devise={devise} />
+            {grille ? <GrilleSummary P={P} grille={grille} devise={devise} /> : <CostShareCalculator t={t} devise={devise} />}
           </div>
         )}
       </Section>
 
+      {showFiche && (
+        <FicheConducteurModal profile={profile} me={me} vehicules={vehicules} plaques={plaques} documents={documents}
+          onClose={() => setShowFiche(false)} onChanged={() => load(true)} />
+      )}
+      {ficheBooking && (
+        <FicheTrajetModal lang={lang} devise={devise} row={buildEtatRow(ficheBooking, offers, members, vehicules)} onClose={() => setFicheBooking(null)} />
+      )}
       {showCreate && (
         <CreateRideModal t={t} events={events} prefill={prefill} onClose={() => { setShowCreate(false); setPrefill(null); }}
+          pro={{ P, proSql, grille, devise, me, myVehicles, onOpenFiche: () => setShowFiche(true) }}
           onCreateOffer={async (f) => { if (await createOffer(f)) { setShowCreate(false); setPrefill(null); } }}
           onCreateRequest={async (f) => { if (await createRequest(f)) { setShowCreate(false); setPrefill(null); } }}
         />
       )}
       {editing && (
         <EditRideModal t={t} editing={editing} onClose={() => setEditing(null)}
+          pro={{ P, proSql, grille, devise, myVehicles }}
           onSave={async (patch) => { await updateRow(editing.kind, editing.row.id, patch); setEditing(null); }}
         />
       )}
       {reserving && (
         <ReserveModal t={t} devise={devise} offer={reserving.offer} onClose={() => setReserving(null)}
-          onSubmit={async (seats, message) => { if (await reserve(reserving.offer.id, seats, message, reserving.requestId)) { setReserving(null); alert(t("cov_reserve_sent")); } }}
+          pro={{ P, grille, vehicule: vehiculeFor(reserving.offer.vehicule_id) }}
+          onSubmit={async (seats, message, solidaire) => { if (await reserve(reserving.offer.id, seats, message, reserving.requestId, solidaire)) { setReserving(null); alert(t("cov_reserve_sent")); } }}
         />
       )}
       {rating && (
@@ -1054,7 +1407,7 @@ function VerifiedBadge({ t, verified }) {
   return <Pill color={TEAL} bg={TEAL_LIGHT}><ShieldCheck size={11} style={{ marginRight: 3 }} /> {t("cov_verified_badge")}</Pill>;
 }
 
-function RideCard({ kind, row, t, lang, devise, isOwn, isBureau, eventTitre, ratingStats, comments, timingStats, memberVerified, memberSuspended, memberSuspendedMotif, reliability, mapOpen, onToggleMap, onReserve, onInterest, onAccept, onDelete, onToggleStatut, onEdit, matches, onReserveMatch, dispatchRound, onLaunchDispatch, onRetryGeocode, onToggleVerify, onToggleSuspend }) {
+function RideCard({ kind, row, t, lang, devise, isOwn, isBureau, eventTitre, ratingStats, comments, timingStats, memberVerified, memberSuspended, memberSuspendedMotif, reliability, mapOpen, onToggleMap, onReserve, onInterest, onAccept, onDelete, onToggleStatut, onEdit, matches, onReserveMatch, dispatchRound, onLaunchDispatch, onRetryGeocode, onToggleVerify, onToggleSuspend, pro }) {
   const isOffer = kind === "offre";
   const geoManquant = row.depart_lat == null;
   return (
@@ -1062,8 +1415,11 @@ function RideCard({ kind, row, t, lang, devise, isOwn, isBureau, eventTitre, rat
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <div style={{ minWidth: 0, width: "100%" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {isOffer && pro && <DriverAvatar photoUrl={pro.photoUrl} nom={row.member_nom} size={30} />}
             <div style={{ fontSize: 13, fontWeight: 700, color: "#182233" }}>{row.member_nom || "—"}</div>
-            <VerifiedBadge t={t} verified={memberVerified} />
+            {isOffer && pro && memberVerified
+              ? <Pill color={TEAL} bg={TEAL_LIGHT}><ShieldCheck size={11} style={{ marginRight: 3 }} /> {pro.P.verified_driver}</Pill>
+              : <VerifiedBadge t={t} verified={memberVerified} />}
             {isOffer && <RatingBadge stats={ratingStats} />}
             {isOffer && <TimingBadge t={t} stats={timingStats} />}
             {memberSuspended && <Pill color={RED} bg="#FCEAEA"><Ban size={11} style={{ marginRight: 3 }} /> {t("cov_suspended_badge")}</Pill>}
@@ -1078,7 +1434,12 @@ function RideCard({ kind, row, t, lang, devise, isOwn, isBureau, eventTitre, rat
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             {isOffer && row.recurrence !== "aucune" && <Pill color={TEAL} bg={TEAL_LIGHT}><Repeat size={11} style={{ marginRight: 3 }} />{t("cov_recurrence_" + row.recurrence)}</Pill>}
-            {isOffer && row.prix_place != null && <Pill color="#182233" bg="#F1F2F4">{money(row.prix_place, devise)} {t("cov_per_seat")}</Pill>}
+            {isOffer && row.prix_place != null && (
+              row.prix_grille != null && pro
+                ? <Pill color={TEAL} bg={TEAL_LIGHT}><Fuel size={11} style={{ marginRight: 3 }} />{Number(row.prix_place) === 0 ? pro.P.pay_offert : `${money(row.prix_place, devise)} ${pro.P.per_passenger}`}</Pill>
+                : <Pill color="#182233" bg="#F1F2F4">{money(row.prix_place, devise)} {t("cov_per_seat")}</Pill>
+            )}
+            {isOffer && row.duree_estimee_min != null && <Pill color="#182233" bg="#F1F2F4"><Clock size={11} style={{ marginRight: 3 }} />≈ {formatDuration(row.duree_estimee_min * 60)}{row.distance_estimee_m != null ? ` · ${(row.distance_estimee_m / 1000).toFixed(1)} km` : ""}</Pill>}
             {isOffer && row.pref_non_fumeur && <Pill color="#182233" bg="#F1F2F4">{t("cov_pref_non_fumeur")}</Pill>}
             {isOffer && row.pref_musique && <Pill color="#182233" bg="#F1F2F4">{t("cov_pref_musique")}</Pill>}
             {isOffer && row.pref_animaux && <Pill color="#182233" bg="#F1F2F4">{t("cov_pref_animaux")}</Pill>}
@@ -1086,6 +1447,12 @@ function RideCard({ kind, row, t, lang, devise, isOwn, isBureau, eventTitre, rat
             {row.statut !== "active" && <Pill color="#8A8F98" bg="#F1F2F4">{t("cov_statut_" + row.statut)}</Pill>}
           </div>
           {isOffer && row.recurrence !== "aucune" && <div style={{ fontSize: 11, color: "#8A8F98", marginTop: -6, marginBottom: 8 }}>{t("cov_recurrence_auto_note")}</div>}
+          {isOffer && pro?.vehicule && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#182233", background: "#F6F8FA", borderRadius: 10, padding: "6px 10px", marginBottom: 10 }}>
+              <VehiculePhoto path={pro.vehicule.photo_path} size={48} />
+              <span><Car size={12} style={{ verticalAlign: -2, marginRight: 4 }} />{vehiculeLabel(pro.vehicule)}</span>
+            </div>
+          )}
           {memberSuspended && isBureau && memberSuspendedMotif && <div style={{ fontSize: 11.5, color: RED, marginBottom: 8 }}>{t("cov_suspend_motif_label")} {memberSuspendedMotif}</div>}
           {row.notes && <div style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 10 }}>{row.notes}</div>}
           {isOffer && comments && comments.length > 0 && (
@@ -1469,7 +1836,7 @@ function MessageThread({ t, messages, myMemberId, onSend, quickMessages, message
   );
 }
 
-function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRating, onRespond, onCancel, onRate, livePosition, isTracking, onStartSharing, onStopSharing, onAdvanceStep, onShare, onReportIncident, onDeleteBooking, onSignalAbsence, messages, myMemberId, onSendMessage, quickMessages, messagesRapidesActif }) {
+function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRating, onRespond, onCancel, onRate, livePosition, isTracking, onStartSharing, onStopSharing, onAdvanceStep, onShare, onReportIncident, onDeleteBooking, onSignalAbsence, messages, myMemberId, onSendMessage, quickMessages, messagesRapidesActif, pro }) {
   const sc = bookingStatutColor(booking.statut);
   const counterpartId = role === "conducteur" ? booking.passenger_member_id : offer?.member_id;
   const counterpartNom = role === "conducteur" ? booking.passenger_nom : offer?.member_nom;
@@ -1482,6 +1849,16 @@ function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRa
   // silencieux (RouteMap ne rend rien) si le tracé OSRM échoue.
   const ridePhase = phaseOf(booking.statut);
   const rideTarget = targetForPhase(ridePhase, offer);
+  // Prix figé à la réservation (sql/2026-10-09b) : absent des réservations
+  // plus anciennes ou tant que le script n'a pas été exécuté.
+  const hasFrozenPrice = !!pro && booking.montant_du != null && (booking.prix_unitaire != null || Number(booking.montant_du) > 0);
+  const actif = !["refusee", "annulee", "en_attente"].includes(booking.statut);
+  const payable = hasFrozenPrice && actif && (Number(booking.montant_du) > 0 || booking.paiement_statut === "offert");
+  const payColor = booking.paiement_statut === "paye" || booking.paiement_statut === "offert" ? { c: TEAL, bg: TEAL_LIGHT }
+    : booking.paiement_statut === "declare_paye" ? { c: "#1F3864", bg: "#EEF1F8" } : { c: AMBER, bg: AMBER_LIGHT };
+  const unpaid = payable && Number(booking.montant_du) > 0 && (booking.paiement_statut === "non_paye" || booking.paiement_statut === "declare_paye");
+  const vehicule = pro?.vehiculeFor(offer?.vehicule_id);
+  const plaque = pro?.plaqueFor(offer?.vehicule_id);
   return (
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
@@ -1491,10 +1868,29 @@ function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRa
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
             <Pill color={sc.color} bg={sc.bg}>{t("cov_booking_statut_" + booking.statut)}</Pill>
             <Pill color="#182233" bg="#F1F2F4">{t("cov_booking_seats").replace("{n}", booking.seats_reserved)}</Pill>
-            {offer?.prix_place != null && <Pill color="#182233" bg="#F1F2F4">{money(offer.prix_place * booking.seats_reserved, devise)}</Pill>}
+            {hasFrozenPrice ? (
+              <>
+                <Pill color="#182233" bg="#F1F2F4"><Fuel size={11} style={{ marginRight: 3 }} />{pro.P.bk_amount.replace("{m}", money(booking.montant_du, devise))}</Pill>
+                {payable && <Pill color={payColor.c} bg={payColor.bg}><Wallet size={11} style={{ marginRight: 3 }} />{pro.P["pay_" + booking.paiement_statut] || booking.paiement_statut}</Pill>}
+              </>
+            ) : offer?.prix_place != null && <Pill color="#182233" bg="#F1F2F4">{money(offer.prix_place * booking.seats_reserved, devise)}</Pill>}
           </div>
+          {hasFrozenPrice && (
+            <div style={{ fontSize: 11.5, color: "#5B6270", marginBottom: 6 }}>
+              {booking.prix_unitaire != null && `${money(booking.prix_unitaire, devise)} ${pro.P.per_passenger}`}
+              {booking.tranche_appliquee && ` · ${trancheLabel(booking.tranche_appliquee, lang)}`}
+              {Number(booking.frais_attente) > 0 && ` · ${pro.P.bk_wait_fee.replace("{m}", money(booking.frais_attente, devise))}`}
+              {Number(booking.frais_reels) > 0 && ` · ${pro.P.bk_real_fee.replace("{m}", money(booking.frais_reels, devise))}${booking.frais_reels_description ? ` (${booking.frais_reels_description})` : ""}`}
+            </div>
+          )}
           {booking.message && <div style={{ fontSize: 12, color: "#5B6270", fontStyle: "italic", marginBottom: 6 }}>« {booking.message} »</div>}
           {engagee && <ContactReveal t={t} contact={memberContact(counterpartId)} />}
+          {role === "passager" && vehicule && (engagee || booking.statut === "terminee") && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, background: "#F6F8FA", borderRadius: 8, padding: "6px 10px", marginTop: 6 }}>
+              <VehiculePhoto path={vehicule.photo_path} size={44} />
+              <span>{vehiculeLabel(vehicule)}{plaque && <> · {pro.P.bk_plate} : <strong>{plaque}</strong></>}</span>
+            </div>
+          )}
           <TripTimer t={t} booking={booking} offer={offer} livePosition={livePosition} />
           {!["refusee", "annulee", "terminee"].includes(booking.statut) && (
             <MessageThread t={t} messages={messages} myMemberId={myMemberId} onSend={(text) => onSendMessage(booking.id, text)}
@@ -1572,6 +1968,31 @@ function BookingRow({ t, lang, devise, booking, offer, role, memberContact, myRa
             {booking.statut === "terminee" && myRating && (
               <span style={{ fontSize: 12, color: AMBER, display: "inline-flex", alignItems: "center", gap: 4 }}><Star size={12} fill={AMBER} /> {myRating.note}/5</span>
             )}
+            {/* Paiement entre membres : l'app enregistre seulement payé / non payé. */}
+            {role === "passager" && unpaid && booking.paiement_statut === "non_paye" && (
+              <>
+                <button onClick={() => pro.onPayment(booking.id, "declare_paye", "especes")} style={linkBtn(TEAL)}><Wallet size={11} /> {pro.P.bk_paid_cash}</button>
+                <button onClick={() => pro.onPayment(booking.id, "declare_paye", "interac")} style={linkBtn(TEAL)}><Wallet size={11} /> {pro.P.bk_paid_interac}</button>
+              </>
+            )}
+            {role === "conducteur" && unpaid && (
+              <>
+                <button onClick={() => pro.onPayment(booking.id, "paye", booking.paiement_mode)} style={linkBtn(TEAL)}><Check size={11} /> {pro.P.bk_confirm_paid}</button>
+                {booking.statut === "terminee" && <button onClick={() => pro.onRemind(booking.id)} style={linkBtn(AMBER)}><Bell size={11} /> {pro.P.bk_remind}</button>}
+              </>
+            )}
+            {role === "conducteur" && hasFrozenPrice && booking.paiement_statut === "paye" && (
+              <button onClick={() => pro.onPayment(booking.id, "non_paye", null)} style={linkBtn("#8A8F98")}>{pro.P.bk_unpaid}</button>
+            )}
+            {role === "conducteur" && hasFrozenPrice && booking.paiement_statut !== "paye" && !["refusee", "annulee"].includes(booking.statut) && Number(booking.prix_unitaire) > 0 && (
+              <button onClick={() => pro.onLowerPrice(booking)} style={linkBtn("var(--primary)")}><Pencil size={11} /> {pro.P.bk_lower}</button>
+            )}
+            {role === "conducteur" && hasFrozenPrice && pro.fraisReelsActif && actif && booking.paiement_statut !== "paye" && (
+              <button onClick={() => pro.onRealCosts(booking)} style={linkBtn("var(--primary)")}><Plus size={11} /> {pro.P.bk_real}</button>
+            )}
+            {hasFrozenPrice && actif && (
+              <button onClick={() => pro.onOpenFiche(booking)} style={linkBtn("var(--primary)")}><FileText size={11} /> {pro.P.bk_fiche}</button>
+            )}
           </div>
         </div>
       </div>
@@ -1598,7 +2019,7 @@ function BookingsPanel({
   t, lang, devise, received, sent, offers, profile, memberContact, myRatingFor, onRespond, onCancel, onRate, onDeleteBooking,
   candidateDispatchRounds, offerFor: offerForProp, requestFor, onRespondDispatch,
   livePositions, trackingBookingId, onStartSharing, onStopSharing, onAdvanceStep, onShare, onReportIncident,
-  onSignalAbsence, messagesFor, onSendMessage, quickMessages, messagesRapidesActif,
+  onSignalAbsence, messagesFor, onSendMessage, quickMessages, messagesRapidesActif, pro,
 }) {
   function offerFor(id) { return offers.find((o) => o.id === id); }
   function positionFor(bookingId) { return (livePositions || []).find((p) => p.booking_id === bookingId); }
@@ -1622,7 +2043,7 @@ function BookingsPanel({
                 livePosition={positionFor(b.id)} isTracking={trackingBookingId === b.id}
                 onStartSharing={onStartSharing} onStopSharing={onStopSharing} onAdvanceStep={onAdvanceStep} onShare={onShare} onReportIncident={onReportIncident}
                 onSignalAbsence={onSignalAbsence} messages={messagesFor(b.id)} myMemberId={profile.member_id} onSendMessage={onSendMessage}
-                quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif} />
+                quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif} pro={pro} />
             ))}
           </div>
         </div>
@@ -1636,7 +2057,7 @@ function BookingsPanel({
                 livePosition={positionFor(b.id)} isTracking={trackingBookingId === b.id}
                 onStartSharing={onStartSharing} onStopSharing={onStopSharing} onAdvanceStep={onAdvanceStep} onShare={onShare} onReportIncident={onReportIncident}
                 onSignalAbsence={onSignalAbsence} messages={messagesFor(b.id)} myMemberId={profile.member_id} onSendMessage={onSendMessage}
-                quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif} />
+                quickMessages={quickMessages} messagesRapidesActif={messagesRapidesActif} pro={pro} />
             ))}
           </div>
         </div>
@@ -2055,19 +2476,54 @@ function ParametresPanel({ t, quickMessages, messagesRapidesActif, onToggleMessa
   );
 }
 
-function ReserveModal({ t, devise, offer, onClose, onSubmit }) {
+// Réservation : la contribution par passager (calculée sur la durée
+// estimée selon la grille) est affichée AVANT de réserver ; elle sera
+// figée en base au moment de la réservation (sql/2026-10-09b).
+function ReserveModal({ t, devise, offer, onClose, onSubmit, pro }) {
   const [seats, setSeats] = useState(1);
   const [message, setMessage] = useState("");
+  const [solidaire, setSolidaire] = useState("");
   const [saving, setSaving] = useState(false);
   const max = offer.places_disponibles || 1;
-  async function submit() { setSaving(true); await onSubmit(Math.min(max, Math.max(1, Number(seats) || 1)), message); setSaving(false); }
+  const nSeats = Math.min(max, Math.max(1, Number(seats) || 1));
+  const P = pro?.P;
+  const g = pro?.grille && offer.grille_id ? pro.grille : null; // options de la grille active (si l'offre a été tarifée)
+  const eventAuto = !!(g && g.solidaire_actif && g.solidaire_evenements && offer.event_id && Number(g.solidaire_pct) > 0);
+  const solidOptions = g && g.solidaire_actif && Number(g.solidaire_pct) > 0 && !eventAuto
+    ? [...(g.solidaire_etudiants ? ["etudiant"] : []), ...(g.solidaire_aines ? ["aine"] : [])] : [];
+  const pct = g ? Number(g.solidaire_pct) : 0;
+  let unit = offer.prix_place != null ? Number(offer.prix_place) : null;
+  if (unit != null && (eventAuto || (solidaire && solidOptions.includes(solidaire)))) unit = Math.round(unit * (1 - pct / 100) * 100) / 100;
+  async function submit() { setSaving(true); await onSubmit(nSeats, message, solidaire || null); setSaving(false); }
   return (
     <div style={overlay} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 16, padding: 24, maxWidth: 420, width: "100%" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "white", borderRadius: 16, padding: 24, maxWidth: 440, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
         <h3 style={{ marginBottom: 6 }}>{t("cov_reserve_modal_title")}</h3>
-        <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 14 }}>{offer.point_depart} → {offer.point_arrivee}</p>
+        <p style={{ fontSize: 12.5, color: "#5B6270", marginBottom: 6 }}>{offer.point_depart} → {offer.point_arrivee}</p>
+        {pro?.vehicule && <p style={{ fontSize: 12, color: "#5B6270", marginBottom: 10 }}><Car size={12} style={{ verticalAlign: -2 }} /> {vehiculeLabel(pro.vehicule)}</p>}
         <Field label={t("cov_reserve_seats_label")}><input type="number" min="1" max={max} style={inputStyle} value={seats} onChange={(e) => setSeats(e.target.value)} /></Field>
-        {offer.prix_place != null && <p style={{ fontSize: 12, color: "#5B6270", marginBottom: 10 }}>{t("cov_per_seat")} : {money(offer.prix_place, devise)} · {t("cov_calc_total")} : {money(offer.prix_place * Math.min(max, Math.max(1, Number(seats) || 1)), devise)}</p>}
+        {P && offer.prix_grille != null && unit != null ? (
+          <div style={{ background: TEAL_LIGHT, borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 12.5 }}>
+            <div style={{ fontWeight: 700, color: TEAL, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><Fuel size={13} /> {P.est_title}</div>
+            <div>{P.res_price} : <strong>{unit === 0 ? P.pay_offert : money(unit, devise)}</strong>{offer.duree_estimee_min != null && <span style={{ color: "#5B6270" }}> · ≈ {formatDuration(offer.duree_estimee_min * 60)}</span>}{offer.tranche_appliquee && <span style={{ color: "#5B6270" }}> · {trancheLabel(offer.tranche_appliquee)}</span>}</div>
+            <div>{P.res_total.replace("{n}", nSeats)} : <strong>{money(unit * nSeats, devise)}</strong></div>
+            <div style={{ fontSize: 11, color: "#5B6270", marginTop: 4 }}>{P.res_frozen}</div>
+            {eventAuto && <div style={{ fontSize: 11.5, color: TEAL, marginTop: 4 }}>{P.res_solid_event.replace("{pct}", pct)}</div>}
+            {g?.attente_actif && Number(g.attente_montant_par_min) > 0 && <div style={{ fontSize: 11, color: "#5B6270", marginTop: 4 }}>{P.res_wait_note.replace("{min}", g.attente_franchise_min).replace("{montant}", money(g.attente_montant_par_min, devise))}</div>}
+            {g?.frais_reels_actif && <div style={{ fontSize: 11, color: "#5B6270", marginTop: 2 }}>{P.res_real_note}</div>}
+            <div style={{ fontSize: 11, color: "#5B6270", marginTop: 2 }}>{P.res_pay_note}</div>
+          </div>
+        ) : offer.prix_place != null && (
+          <p style={{ fontSize: 12, color: "#5B6270", marginBottom: 10 }}>{t("cov_per_seat")} : {money(offer.prix_place, devise)} · {t("cov_calc_total")} : {money(offer.prix_place * nSeats, devise)}</p>
+        )}
+        {P && solidOptions.length > 0 && (
+          <Field label={P.res_solidaire}>
+            <select style={inputStyle} value={solidaire} onChange={(e) => setSolidaire(e.target.value)}>
+              <option value="">{P.res_solid_none}</option>
+              {solidOptions.map((o) => <option key={o} value={o}>{P["res_solid_" + o].replace("{pct}", pct)}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label={t("cov_reserve_message_label")}><textarea style={{ ...inputStyle, minHeight: 60 }} value={message} onChange={(e) => setMessage(e.target.value)} /></Field>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
           <Btn variant="outline" onClick={onClose}>{t("action_cancel")}</Btn>
@@ -2076,6 +2532,64 @@ function ReserveModal({ t, devise, offer, onClose, onSubmit }) {
       </div>
     </div>
   );
+}
+
+// Résumé de la grille de l'association (colonne de droite du babillard,
+// à la place du calculateur au km quand une grille est active).
+function GrilleSummary({ P, grille, devise }) {
+  const tranches = [...(grille.tranches || [])].sort((a, b) => Number(a.de) - Number(b.de));
+  const lastA = tranches.length ? Number(tranches[tranches.length - 1].a) : 0;
+  return (
+    <Card>
+      <h3 style={{ fontSize: 13.5, display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}><Fuel size={15} color={TEAL} /> {P.grid_title}</h3>
+      <p style={{ fontSize: 11.5, color: "#8A8F98", marginBottom: 10 }}>{P.grid_note}</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {tranches.map((r) => (
+          <div key={`${r.de}-${r.a}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5 }}>
+            <span>{r.de}–{r.a} min</span><strong>{money(r.montant, devise)}</strong>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 11.5, color: "#5B6270", marginTop: 8 }}>
+        {P.grid_beyond.replace("{a}", lastA).replace("{base}", money(grille.au_dela_montant, devise)).replace("{plus}", money(grille.au_dela_montant_par_tranche, devise)).replace("{n}", grille.au_dela_par_min)}
+      </p>
+      <p style={{ fontSize: 11, color: "#8A8F98", marginTop: 8, display: "flex", gap: 6, alignItems: "flex-start" }}><Leaf size={13} color={TEAL} style={{ flexShrink: 0, marginTop: 1 }} /> {P.res_pay_note}</p>
+    </Card>
+  );
+}
+
+// Estimation affichée dans le formulaire d'offre : durée estimée (OSRM),
+// tranche et prix maximal par passager selon la grille.
+function OfferEstimate({ P, devise, grille, eta, loading, hasGeo }) {
+  if (!hasGeo) return grille ? <p style={{ fontSize: 11.5, color: AMBER, marginBottom: 12 }}>{P.est_need_geo}</p> : null;
+  if (loading) return <p style={{ fontSize: 11.5, color: "#8A8F98", marginBottom: 12 }}>{P.est_loading}</p>;
+  if (!eta) return null;
+  const min = formatDuration(eta.durationSec);
+  const km = (eta.distanceM / 1000).toFixed(1);
+  const prix = grille ? prixSelonGrille(grille, eta.durationSec / 60) : null;
+  return (
+    <div style={{ background: TEAL_LIGHT, borderRadius: 10, padding: "8px 12px", marginBottom: 12, fontSize: 12.5 }}>
+      <div style={{ fontWeight: 700, color: TEAL, display: "flex", alignItems: "center", gap: 6 }}><Fuel size={13} /> {P.est_title}</div>
+      <div>{prix
+        ? P.est_line.replace("{min}", min).replace("{km}", km).replace("{tranche}", trancheLabel(prix)).replace("{montant}", money(prix.montant, devise))
+        : P.est_line_free.replace("{min}", min).replace("{km}", km)}</div>
+    </div>
+  );
+}
+
+// Durée estimée recalculée dès que départ ET arrivée ont des coordonnées.
+function useRouteEstimate(departGeo, arriveeGeo) {
+  const [state, setState] = useState({ eta: null, loading: false });
+  const key = departGeo && arriveeGeo ? `${departGeo.lat},${departGeo.lng};${arriveeGeo.lat},${arriveeGeo.lng}` : "";
+  useEffect(() => {
+    if (!key) return undefined;
+    let cancelled = false;
+    const [a, b] = key.split(";").map((s) => s.split(",").map(Number));
+    Promise.resolve().then(() => { if (!cancelled) setState({ eta: null, loading: true }); });
+    fetchRouteEta(a[0], a[1], b[0], b[1]).then((r) => { if (!cancelled) setState({ eta: r, loading: false }); });
+    return () => { cancelled = true; };
+  }, [key]);
+  return key ? state : { eta: null, loading: false };
 }
 
 function RatingModal({ t, counterpartNom, onClose, onSubmit }) {
@@ -2287,7 +2801,7 @@ function CostShareCalculator({ t, devise }) {
 }
 
 // ---------- Création ----------
-function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateRequest }) {
+function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateRequest, pro }) {
   // prefill (Phase B, covoiturage événementiel dédié) : { kind, event_id,
   // point_arrivee, date_heure } — reçu quand le trajet est créé depuis le
   // bandeau "Covoiturage pour vos événements" plutôt que depuis le bouton
@@ -2302,10 +2816,20 @@ function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateR
   const [departGeo, setDepartGeo] = useState(null); // coordonnées exactes si une suggestion a été choisie (AddressAutocomplete)
   const [arriveeGeo, setArriveeGeo] = useState(null);
   const [saving, setSaving] = useState(false);
+  const { P, proSql, grille, devise, me, myVehicles = [], onOpenFiche } = pro || {};
+  const [vehiculeId, setVehiculeId] = useState("");
+  const selectedVehiculeId = vehiculeId || myVehicles[0]?.id || "";
+  const { eta, loading: etaLoading } = useRouteEstimate(departGeo, arriveeGeo);
+  const prixMax = grille && eta ? prixSelonGrille(grille, eta.durationSec / 60)?.montant : null;
+  // Conducteur identifié (sql/2026-10-09b) : photo + véhicule requis pour une offre.
+  const missingPhoto = kind === "offre" && proSql && !me?.photo_url;
+  const missingVehicle = kind === "offre" && proSql && myVehicles.length === 0;
+  const prixTropHaut = kind === "offre" && prixMax != null && form.prix_place !== "" && Number(form.prix_place) > prixMax;
   async function submit() {
     if (!form.point_depart.trim() || !form.point_arrivee.trim() || !form.date_heure) return;
+    if (missingPhoto || missingVehicle || prixTropHaut) return;
     setSaving(true);
-    const payload = { ...form, departGeo, arriveeGeo };
+    const payload = { ...form, departGeo, arriveeGeo, eta, vehicule_id: selectedVehiculeId || null };
     if (kind === "offre") await onCreateOffer(payload); else await onCreateRequest(payload);
     setSaving(false);
   }
@@ -2319,11 +2843,11 @@ function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateR
         </div>
         <Field label={t("cov_field_from")}>
           <AddressAutocomplete t={t} value={form.point_depart} placeholder={t("cov_field_address_placeholder")}
-            onChange={(v) => setForm((p) => ({ ...p, point_depart: v }))} onSelect={setDepartGeo} />
+            onChange={(v) => setForm((p) => ({ ...p, point_depart: v }))} onSelect={setDepartGeo} geo={departGeo} />
         </Field>
         <Field label={t("cov_field_to")}>
           <AddressAutocomplete t={t} value={form.point_arrivee} placeholder={t("cov_field_address_placeholder")}
-            onChange={(v) => setForm((p) => ({ ...p, point_arrivee: v }))} onSelect={setArriveeGeo} />
+            onChange={(v) => setForm((p) => ({ ...p, point_arrivee: v }))} onSelect={setArriveeGeo} geo={arriveeGeo} />
         </Field>
         <Field label={t("cov_field_datetime")}><input type="datetime-local" style={inputStyle} value={form.date_heure} onChange={(e) => setForm((p) => ({ ...p, date_heure: e.target.value }))} /></Field>
         {kind === "offre" ? (
@@ -2335,8 +2859,26 @@ function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateR
                 <option value="quotidien_ouvrable">{t("cov_recurrence_quotidien_ouvrable")}</option>
               </select>
             </Field>
+            {P && (missingPhoto || missingVehicle) && (
+              <div style={{ background: AMBER_LIGHT, borderRadius: 10, padding: "10px 12px", marginBottom: 12, fontSize: 12.5 }}>
+                {missingPhoto && <div style={{ display: "flex", gap: 6, alignItems: "center" }}><AlertTriangle size={13} color={AMBER} /> {P.photo_needed}</div>}
+                {missingVehicle && <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}><AlertTriangle size={13} color={AMBER} /> {P.vehicle_none}</div>}
+                <button type="button" onClick={onOpenFiche} style={{ ...linkBtn("var(--primary)"), marginTop: 6 }}><UserCircle size={12} /> {P.open_fiche}</button>
+              </div>
+            )}
+            {P && myVehicles.length > 0 && (
+              <Field label={P.vehicle_label}>
+                <select style={inputStyle} value={selectedVehiculeId} onChange={(e) => setVehiculeId(e.target.value)}>
+                  {myVehicles.map((v) => <option key={v.id} value={v.id}>{vehiculeLabel(v)}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label={t("cov_field_seats")}><input type="number" min="1" style={inputStyle} value={form.places_disponibles} onChange={(e) => setForm((p) => ({ ...p, places_disponibles: e.target.value }))} /></Field>
-            <Field label={t("cov_field_price")}><input type="number" min="0" step="0.01" style={inputStyle} value={form.prix_place} onChange={(e) => setForm((p) => ({ ...p, prix_place: e.target.value }))} placeholder={t("cov_field_price_placeholder")} /></Field>
+            {P && <OfferEstimate P={P} devise={devise} grille={grille} eta={eta} loading={etaLoading} hasGeo={!!(departGeo && arriveeGeo)} />}
+            <Field label={P && prixMax != null ? P.price_label_grid.replace("{max}", money(prixMax, devise)) : t("cov_field_price")}>
+              <input type="number" min="0" max={prixMax ?? undefined} step="0.01" style={{ ...inputStyle, ...(prixTropHaut ? { borderColor: RED } : {}) }} value={form.prix_place} onChange={(e) => setForm((p) => ({ ...p, prix_place: e.target.value }))} placeholder={prixMax != null ? String(prixMax) : t("cov_field_price_placeholder")} />
+            </Field>
+            {P && grille && <p style={{ fontSize: 11, color: prixTropHaut ? RED : "#8A8F98", marginTop: -8, marginBottom: 12 }}>{P.price_hint_grid}</p>}
             <PreferencesFields t={t} form={form} setForm={setForm} />
           </>
         ) : (
@@ -2359,14 +2901,14 @@ function CreateRideModal({ t, events, prefill, onClose, onCreateOffer, onCreateR
         <Field label={t("cov_field_notes")}><textarea style={{ ...inputStyle, minHeight: 60 }} value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} /></Field>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
           <Btn variant="outline" onClick={onClose}>{t("action_cancel")}</Btn>
-          <Btn onClick={submit} disabled={saving}>{saving ? t("loading") : t("action_publish")}</Btn>
+          <Btn onClick={submit} disabled={saving || missingPhoto || missingVehicle || prixTropHaut}>{saving ? t("loading") : t("action_publish")}</Btn>
         </div>
       </div>
     </div>
   );
 }
 
-function EditRideModal({ t, editing, onClose, onSave }) {
+function EditRideModal({ t, editing, onClose, onSave, pro }) {
   const isOffer = editing.kind === "offre";
   const row = editing.row;
   const [form, setForm] = useState({
@@ -2379,6 +2921,7 @@ function EditRideModal({ t, editing, onClose, onSave }) {
   const [departGeo, setDepartGeo] = useState(null); // coordonnées exactes si une suggestion a été choisie (AddressAutocomplete)
   const [arriveeGeo, setArriveeGeo] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [vehiculeId, setVehiculeId] = useState(row.vehicule_id || "");
   async function submit() {
     setSaving(true);
     // Le géocodage n'est refait que si le texte départ/arrivée a changé —
@@ -2386,8 +2929,8 @@ function EditRideModal({ t, editing, onClose, onSave }) {
     // prix ou de notes. Si une suggestion de AddressAutocomplete a été
     // choisie, ses coordonnées sont déjà connues — pas besoin de
     // regéocoder dans ce cas non plus.
-    const departChanged = form.point_depart !== row.point_depart;
-    const arriveeChanged = form.point_arrivee !== row.point_arrivee;
+    const departChanged = form.point_depart !== row.point_depart || !!departGeo;
+    const arriveeChanged = form.point_arrivee !== row.point_arrivee || !!arriveeGeo;
     const [depart, arrivee] = await Promise.all([
       !departChanged ? Promise.resolve(undefined) : (departGeo ? Promise.resolve(departGeo) : geocodeAddress(form.point_depart)),
       !arriveeChanged ? Promise.resolve(undefined) : (arriveeGeo ? Promise.resolve(arriveeGeo) : geocodeAddress(form.point_arrivee)),
@@ -2395,6 +2938,18 @@ function EditRideModal({ t, editing, onClose, onSave }) {
     const geo = {};
     if (departChanged) { geo.depart_lat = depart?.lat ?? null; geo.depart_lng = depart?.lng ?? null; }
     if (arriveeChanged) { geo.arrivee_lat = arrivee?.lat ?? null; geo.arrivee_lng = arrivee?.lng ?? null; }
+    // Offre : nouvelle durée estimée si l'itinéraire a changé (le prix
+    // maximal est alors recalculé en base selon la grille active).
+    if (isOffer && pro?.proSql) {
+      if (departChanged || arriveeChanged) {
+        const dLat = departChanged ? geo.depart_lat : row.depart_lat, dLng = departChanged ? geo.depart_lng : row.depart_lng;
+        const aLat = arriveeChanged ? geo.arrivee_lat : row.arrivee_lat, aLng = arriveeChanged ? geo.arrivee_lng : row.arrivee_lng;
+        const eta = dLat != null && aLat != null ? await fetchRouteEta(dLat, dLng, aLat, aLng) : null;
+        geo.duree_estimee_min = eta ? Math.round((eta.durationSec / 60) * 10) / 10 : null;
+        geo.distance_estimee_m = eta ? Math.round(eta.distanceM) : null;
+      }
+      if (vehiculeId !== (row.vehicule_id || "")) geo.vehicule_id = vehiculeId || null;
+    }
     await onSave(isOffer
       ? { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: datetimeLocalToISO(form.date_heure), places_disponibles: Number(form.places_disponibles) || 1, prix_place: form.prix_place === "" ? null : Number(form.prix_place), notes: form.notes.trim() || null, pref_non_fumeur: !!form.pref_non_fumeur, pref_musique: !!form.pref_musique, pref_animaux: !!form.pref_animaux, ...geo }
       : { point_depart: form.point_depart, point_arrivee: form.point_arrivee, date_heure: datetimeLocalToISO(form.date_heure), places_demandees: Number(form.places_demandees) || 1, notes: form.notes.trim() || null, ...geo }
@@ -2407,17 +2962,26 @@ function EditRideModal({ t, editing, onClose, onSave }) {
         <h3 style={{ marginBottom: 14 }}>{t("action_edit")}</h3>
         <Field label={t("cov_field_from")}>
           <AddressAutocomplete t={t} value={form.point_depart} placeholder={t("cov_field_address_placeholder")}
-            onChange={(v) => setForm((p) => ({ ...p, point_depart: v }))} onSelect={setDepartGeo} />
+            onChange={(v) => setForm((p) => ({ ...p, point_depart: v }))} onSelect={setDepartGeo} geo={departGeo} />
         </Field>
         <Field label={t("cov_field_to")}>
           <AddressAutocomplete t={t} value={form.point_arrivee} placeholder={t("cov_field_address_placeholder")}
-            onChange={(v) => setForm((p) => ({ ...p, point_arrivee: v }))} onSelect={setArriveeGeo} />
+            onChange={(v) => setForm((p) => ({ ...p, point_arrivee: v }))} onSelect={setArriveeGeo} geo={arriveeGeo} />
         </Field>
         <Field label={t("cov_field_datetime")}><input type="datetime-local" style={inputStyle} value={form.date_heure} onChange={(e) => setForm((p) => ({ ...p, date_heure: e.target.value }))} /></Field>
         {isOffer ? (
           <>
             <Field label={t("cov_field_seats")}><input type="number" min="1" style={inputStyle} value={form.places_disponibles} onChange={(e) => setForm((p) => ({ ...p, places_disponibles: e.target.value }))} /></Field>
-            <Field label={t("cov_field_price")}><input type="number" min="0" step="0.01" style={inputStyle} value={form.prix_place} onChange={(e) => setForm((p) => ({ ...p, prix_place: e.target.value }))} /></Field>
+            {pro?.myVehicles?.length > 0 && (
+              <Field label={pro.P.vehicle_label}>
+                <select style={inputStyle} value={vehiculeId} onChange={(e) => setVehiculeId(e.target.value)}>
+                  <option value="">—</option>
+                  {pro.myVehicles.map((v) => <option key={v.id} value={v.id}>{vehiculeLabel(v)}</option>)}
+                </select>
+              </Field>
+            )}
+            <Field label={row.prix_grille != null && pro ? pro.P.price_label_grid.replace("{max}", money(row.prix_grille, pro.devise)) : t("cov_field_price")}><input type="number" min="0" max={row.prix_grille ?? undefined} step="0.01" style={inputStyle} value={form.prix_place} onChange={(e) => setForm((p) => ({ ...p, prix_place: e.target.value }))} /></Field>
+            {row.prix_grille != null && pro && <p style={{ fontSize: 11, color: "#8A8F98", marginTop: -8, marginBottom: 12 }}>{pro.P.price_hint_grid}</p>}
             <PreferencesFields t={t} form={form} setForm={setForm} />
           </>
         ) : (
