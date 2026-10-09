@@ -106,6 +106,68 @@ function eventShareText(ev, t, lang, joinLabel) {
   return lines.join("\n");
 }
 
+// ---------- Bénévolat ↔ membres disponibles (2026-10-10, voir
+// sql/2026-10-10a_benevolat_disponibles.sql) : dictionnaire local FR/EN
+// pour les nouveaux libellés, même principe que l'objet L plus bas.
+const BENEVOLAT_TXT = {
+  fr: {
+    dispoTitle: "Membres disponibles pour du bénévolat",
+    dispoEmpty: "Aucun autre membre n'a coché « Disponible pour du bénévolat » sur sa fiche.",
+    enroll: "Inscrire",
+    notify: "Prévenir",
+    notifyAll: "Prévenir tous les disponibles",
+    whatsapp: "Partager sur WhatsApp",
+    enrolled: "Membre inscrit à la tâche.",
+    already: "Ce membre est déjà inscrit à cette tâche.",
+    full: "Cette tâche est déjà complète.",
+    notAllowed: "Action réservée au Bureau.",
+    notFound: "Tâche ou membre introuvable.",
+    sqlMissing: "Fonction indisponible : le script sql/2026-10-10a_benevolat_disponibles.sql doit d'abord être exécuté dans Supabase.",
+    notified: (n) => `Notification envoyée à ${n} compte(s) (reçue par ceux qui ont activé les notifications).`,
+    noAccount: "Aucun compte de l'application n'est relié à ce(s) membre(s). Le partage WhatsApp va s'ouvrir à la place.",
+    noPush: "Les notifications push ne sont pas configurées. Le partage WhatsApp va s'ouvrir à la place.",
+    askNotifyAll: (n) => `Tâche ajoutée. Prévenir maintenant les ${n} membre(s) disponible(s) pour du bénévolat ?`,
+    shareIntro: "🙋 Besoin de bénévoles !",
+    shareTask: "Tâche",
+    sharePlaces: "Places restantes",
+    shareOutro: "Inscription dans l'application, onglet Événements → Bénévolat.",
+    openTitle: "Tâches de bénévolat ouvertes",
+    openHint: "Vous avez indiqué être disponible pour du bénévolat : voici les tâches qui cherchent encore des volontaires.",
+    openEmpty: "Aucune tâche ouverte pour le moment.",
+    seeEvent: "Voir l'événement",
+    places: "place(s) restante(s)",
+    skills: "Compétences",
+  },
+  en: {
+    dispoTitle: "Members available to volunteer",
+    dispoEmpty: "No other member has ticked “Available to volunteer” on their profile.",
+    enroll: "Sign up",
+    notify: "Notify",
+    notifyAll: "Notify all available members",
+    whatsapp: "Share on WhatsApp",
+    enrolled: "Member signed up for the task.",
+    already: "This member is already signed up for this task.",
+    full: "This task is already full.",
+    notAllowed: "Board members only.",
+    notFound: "Task or member not found.",
+    sqlMissing: "Feature unavailable: the script sql/2026-10-10a_benevolat_disponibles.sql must first be run in Supabase.",
+    notified: (n) => `Notification sent to ${n} account(s) (received by those who enabled notifications).`,
+    noAccount: "No app account is linked to this/these member(s). WhatsApp sharing will open instead.",
+    noPush: "Push notifications are not configured. WhatsApp sharing will open instead.",
+    askNotifyAll: (n) => `Task added. Notify the ${n} member(s) available to volunteer now?`,
+    shareIntro: "🙋 Volunteers needed!",
+    shareTask: "Task",
+    sharePlaces: "Spots left",
+    shareOutro: "Sign up in the app, Events tab → Volunteering.",
+    openTitle: "Open volunteer tasks",
+    openHint: "You said you are available to volunteer: these tasks are still looking for volunteers.",
+    openEmpty: "No open task at the moment.",
+    seeEvent: "View event",
+    places: "spot(s) left",
+    skills: "Skills",
+  },
+};
+
 // =====================================================================
 // Modernisation Événements (2026-09-30) — voir sql/2026-09-30_evenements_
 // modernisation.sql et claude/evenements-modernisation-proposition.md
@@ -412,6 +474,10 @@ export default function Evenements({ profile, isBureau, association }) {
   const [waitlist, setWaitlist] = useState([]);
   const [volunteerTasks, setVolunteerTasks] = useState([]);
   const [volunteerSignups, setVolunteerSignups] = useState([]);
+  // Membres ayant coché « Disponible pour du bénévolat » (fiche adhérent).
+  // Selon la RLS de members, un adhérent ne reçoit au minimum que sa propre
+  // fiche — suffisant pour savoir s'il doit voir l'encart des tâches ouvertes.
+  const [availableMembers, setAvailableMembers] = useState([]);
   const [carpoolOffers, setCarpoolOffers] = useState([]);
   const [carpoolRequests, setCarpoolRequests] = useState([]);
   const [refundQueue, setRefundQueue] = useState([]);
@@ -443,6 +509,8 @@ export default function Evenements({ profile, isBureau, association }) {
   const [newCarpoolRequest, setNewCarpoolRequest] = useState({ notes: "" });
   const [loading, setLoading] = useState(true);
   const { t, lang } = useLang();
+  // Libellés du lien bénévolat ↔ membres disponibles (dictionnaire local).
+  const BV = BENEVOLAT_TXT[lang === "en" ? "en" : "fr"];
   // 2026-09-28 (suite 80) — devise réelle de l'association plutôt qu'un CAD
   // codé en dur (même correctif que Projets.jsx, oublié lors du chantier
   // devise de la suite 78 : le prix d'un événement s'affichait toujours en
@@ -454,7 +522,7 @@ export default function Evenements({ profile, isBureau, association }) {
     const [
       { data: ev }, { data: rs }, { data: mem }, revResult, claimsResult, txResult,
       sessResult, waitResult, volTaskResult, volSignResult, carpoolOfferResult, carpoolRequestResult, refundResult,
-      publicRegsResult,
+      publicRegsResult, availableResult,
     ] = await Promise.all([
       supabase.from("events").select("*").eq("association_id", profile.association_id).order("date_debut"),
       supabase.from("event_rsvps").select("*"),
@@ -475,6 +543,8 @@ export default function Evenements({ profile, isBureau, association }) {
       // Inscriptions publiques (non-adhérents) — RLS réservée au Bureau,
       // un adhérent reçoit silencieusement une liste vide (aucune erreur).
       supabase.from("event_public_registrations").select("*").order("created_at", { ascending: false }),
+      // Requête tolérante : colonnes ajoutées par sql/2026-10-06_demande_adhesion_complete.sql.
+      supabase.from("members").select("id,nom,statut,competences,disponible_benevolat").eq("association_id", profile.association_id).eq("disponible_benevolat", true).order("nom"),
     ]);
    setEvents(ev || []); setRsvps(rs || []); setMembers((mem || []).filter((m) => m.statut !== "Supprimé"));
     // Requête tolérante : n'existe qu'à partir de la suite 63 (2026-09-12) —
@@ -497,6 +567,7 @@ export default function Evenements({ profile, isBureau, association }) {
     setCarpoolRequests(carpoolRequestResult?.error ? [] : (carpoolRequestResult?.data || []));
     setRefundQueue(refundResult?.error ? [] : (refundResult?.data || []));
     setPublicRegistrations(publicRegsResult?.error ? [] : (publicRegsResult?.data || []));
+    setAvailableMembers(availableResult?.error ? [] : (availableResult?.data || []).filter((m) => m.statut !== "Supprimé"));
     setLoading(false);
   }, [profile.association_id]);
   useEffect(() => { load(); }, [load]);
@@ -965,6 +1036,52 @@ export default function Evenements({ profile, isBureau, association }) {
     if (error) { alert(t("ev_error_generic") + " " + friendlyError(error, t)); return; }
     setVolunteerTasks((p) => [...p, data]);
     setNewVolunteerTask({ titre: "", description: "", membres_requis: 1 });
+    // Proposer tout de suite de prévenir les membres disponibles.
+    if (availableMembers.length > 0 && window.confirm(BV.askNotifyAll(availableMembers.length))) {
+      notifyVolunteers(data, null);
+    }
+  }
+
+  // ---------- Bénévolat ↔ membres disponibles (2026-10-10) ----------
+  function volunteerShareText(task) {
+    const ev = events.find((e) => e.id === task.event_id);
+    const left = Math.max(0, task.membres_requis - taskSignups(task.id).length);
+    const lines = [BV.shareIntro, ""];
+    if (ev) lines.push(eventShareText(ev, t, lang, t("ev_join_meeting_btn")), "");
+    lines.push(`${BV.shareTask} : ${task.titre}`);
+    if (task.description) lines.push(task.description);
+    lines.push(`${BV.sharePlaces} : ${left}`, "", BV.shareOutro);
+    return lines.join("\n");
+  }
+  function shareVolunteerTaskWhatsApp(task) {
+    window.open(whatsappShareUrl(volunteerShareText(task)), "_blank", "noopener,noreferrer");
+  }
+  // memberId null = tous les membres disponibles non encore inscrits.
+  async function notifyVolunteers(task, memberId) {
+    const { data, error } = await supabase.rpc("prevenir_benevoles_disponibles", { p_task_id: task.id, p_member_id: memberId });
+    if (error) {
+      if (error.code === "PGRST202" || error.code === "42883") alert(BV.sqlMissing);
+      else alert(t("ev_error_generic") + " " + friendlyError(error, t));
+      return;
+    }
+    const n = Number(data);
+    if (n > 0) { alert(BV.notified(n)); return; }
+    alert(n < 0 ? BV.noPush : BV.noAccount);
+    shareVolunteerTaskWhatsApp(task);
+  }
+  async function enrollVolunteer(taskId, memberId) {
+    const { data, error } = await supabase.rpc("inscrire_benevole_evenement", { p_task_id: taskId, p_member_id: memberId });
+    if (error) {
+      if (error.code === "PGRST202" || error.code === "42883") alert(BV.sqlMissing);
+      else alert(t("ev_error_generic") + " " + friendlyError(error, t));
+      return;
+    }
+    const status = (Array.isArray(data) ? data[0] : data)?.status;
+    if (status === "inscrit") load();
+    else if (status === "deja_inscrit") { alert(BV.already); load(); }
+    else if (status === "complet") { alert(BV.full); load(); }
+    else if (status === "non_autorise") alert(BV.notAllowed);
+    else alert(BV.notFound);
   }
   async function deleteVolunteerTask(taskId) {
     if (!window.confirm(t("ev_volunteer_task_delete_confirm"))) return;
@@ -1485,6 +1602,34 @@ export default function Evenements({ profile, isBureau, association }) {
                       {mineSignup && (
                         <button onClick={() => leaveVolunteerTask(mineSignup)} style={{ marginTop: 8, background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, padding: 0 }}>{t("ev_volunteer_leave_btn")}</button>
                       )}
+                      {isBureau && !taskFull && (() => {
+                        const candidates = availableMembers.filter((m) => !signups.some((s) => s.member_id === m.id));
+                        const linkBtn = { background: "none", border: "none", cursor: "pointer", fontSize: 11.5, padding: 0, fontWeight: 600, whiteSpace: "nowrap" };
+                        return (
+                          <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px dashed #DCE0E8" }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".04em", color: "#686F7D", marginBottom: 6 }}>{BV.dispoTitle} · {candidates.length}</div>
+                            {candidates.length === 0 && <div style={{ fontSize: 11.5, color: "#686F7D", fontStyle: "italic" }}>{BV.dispoEmpty}</div>}
+                            {candidates.map((m) => (
+                              <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, padding: "4px 0" }}>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 12.5 }}>{m.nom}</div>
+                                  {m.competences && <div style={{ fontSize: 11, color: "#5B6270" }}>{BV.skills} : {m.competences}</div>}
+                                </div>
+                                <div style={{ display: "flex", gap: 10, flexShrink: 0 }}>
+                                  <button onClick={() => enrollVolunteer(task.id, m.id)} style={{ ...linkBtn, color: TEAL }}>{BV.enroll}</button>
+                                  <button onClick={() => notifyVolunteers(task, m.id)} style={{ ...linkBtn, color: NAVY }}>{BV.notify}</button>
+                                </div>
+                              </div>
+                            ))}
+                            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+                              {candidates.length > 1 && (
+                                <button onClick={() => notifyVolunteers(task, null)} style={{ ...linkBtn, color: NAVY }}>{BV.notifyAll}</button>
+                              )}
+                              <button onClick={() => shareVolunteerTaskWhatsApp(task)} style={{ ...linkBtn, color: "#1DA851", display: "inline-flex", alignItems: "center", gap: 4 }}><MessageCircle size={12} /> {BV.whatsapp}</button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </Card>
                   );
                 })}
@@ -1787,6 +1932,37 @@ export default function Evenements({ profile, isBureau, association }) {
           )}
         </div>
       )}
+
+      {profile.member_id && availableMembers.some((m) => m.id === profile.member_id) && (() => {
+        // Encart adhérent : visible seulement pour ceux qui ont coché
+        // « Disponible pour du bénévolat » sur leur fiche.
+        const openTasks = volunteerTasks
+          .map((task) => ({ task, ev: events.find((e) => e.id === task.event_id) }))
+          .filter(({ task, ev }) => ev && !ev.annule && new Date(ev.date_debut) >= now
+            && !myVolunteerSignup(task.id) && taskSignups(task.id).length < task.membres_requis)
+          .sort((a, b) => new Date(a.ev.date_debut) - new Date(b.ev.date_debut));
+        return (
+          <Card style={{ marginBottom: 20, padding: 18, borderRadius: 16, border: "1px solid rgba(46,139,116,.25)", background: TEAL_LIGHT }}>
+            <h3 style={{ fontSize: 14.5, margin: "0 0 4px", color: TEAL_DARK }}>🙋 {BV.openTitle}</h3>
+            <p style={{ fontSize: 12.5, color: "#5B6270", margin: "0 0 10px" }}>{BV.openHint}</p>
+            {openTasks.length === 0 && <p style={{ fontSize: 12.5, color: "#686F7D", fontStyle: "italic", margin: 0 }}>{BV.openEmpty}</p>}
+            {openTasks.map(({ task, ev }) => (
+              <div key={task.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "8px 0", borderTop: "1px solid rgba(46,139,116,.15)" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{task.titre}</div>
+                  <div style={{ fontSize: 11.5, color: "#5B6270" }}>
+                    {ev.titre} · {new Date(ev.date_debut).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA")} · {task.membres_requis - taskSignups(task.id).length} {BV.places}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 14, flexShrink: 0 }}>
+                  <button onClick={() => { setSelectedEventId(ev.id); setActiveTab("benevolat"); }} style={{ background: "none", border: "none", color: NAVY, cursor: "pointer", fontSize: 12, padding: 0 }}>{BV.seeEvent}</button>
+                  <button onClick={() => volunteerForTask(task.id)} style={{ background: "none", border: "none", color: TEAL, cursor: "pointer", fontSize: 12, padding: 0, fontWeight: 600 }}>{t("ev_volunteer_signup_btn")}</button>
+                </div>
+              </div>
+            ))}
+          </Card>
+        );
+      })()}
 
       <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
         <button onClick={() => setListFilter("avenir")} style={pillFilterStyle(listFilter === "avenir")}>{L.upcoming} · {upcoming.length}</button>
