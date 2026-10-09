@@ -138,6 +138,8 @@ const TXT = {
     pdf_not_proclaimed: "Résultats non encore proclamés (document provisoire).",
     pdf_secret: "Vote secret : l'urne ne contient aucun lien entre votant et bulletin ; seule la liste d'émargement indique qui a voté.",
     pdf_sign: "Signatures du comité électoral",
+    pdf_from_to: "du {a} au {b}", pdf_until: "jusqu’au {a}", pdf_page: "Page {p} sur {n}", pdf_signature: "Signature", pdf_date: "Date",
+    pdf_col_result: "Résultat", pdf_role: "Rôle", pdf_none: "Aucun membre désigné.", pdf_election: "Élection", pdf_status: "Statut",
   },
   en: {
     create_title: "Organize an election",
@@ -252,6 +254,8 @@ const TXT = {
     pdf_not_proclaimed: "Results not yet proclaimed (provisional document).",
     pdf_secret: "Secret ballot: the ballot box holds no link between voter and ballot; only the sign-in list shows who voted.",
     pdf_sign: "Election committee signatures",
+    pdf_from_to: "from {a} to {b}", pdf_until: "until {a}", pdf_page: "Page {p} of {n}", pdf_signature: "Signature", pdf_date: "Date",
+    pdf_col_result: "Result", pdf_role: "Role", pdf_none: "No member appointed.", pdf_election: "Election", pdf_status: "Status",
   },
 };
 
@@ -999,102 +1003,254 @@ function Resultats({ el, etape, quorumKo, postes, valides, voix, departages, tir
   );
 }
 
+
 // ---------------------------------------------------------------------
 // Procès-verbal PDF : calendrier, comité, règles, participation, quorum,
 // résultats par poste (départages compris) et signatures du comité.
+//
+// Refait après le premier essai de l'utilisateur (2026-10-09) : caractères
+// illisibles et mise en page confuse. Les polices standard de jsPDF ne
+// connaissent que l'alphabet latin courant (WinAnsi) : la flèche « → » et
+// les espaces fines que le navigateur glisse dans les dates françaises
+// sortaient en signes incompréhensibles ou en lettres espacées. Tout texte
+// passe donc par pdfTexte(), et les dates par un format court sans ces
+// caractères ; les tableaux font passer les textes longs à la ligne.
+// ---------------------------------------------------------------------
+function pdfTexte(s) {
+  return String(s ?? "")
+    .replace(/[\u202F\u2009\u2007\u00A0]/g, " ")
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2192/g, "->")
+    .replace(/\u2026/g, "...")
+    // Dernier filet : tout caractère hors Latin-1 est retiré plutôt que
+    // de s'imprimer en charabia.
+    .replace(/[^ -\u00FF\n]/g, "");
+}
+
+function pdfDate(iso, lang) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  const locale = lang === "en" ? "en-CA" : "fr-CA";
+  const jour = d.toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
+  const pad = (n) => String(n).padStart(2, "0");
+  return pdfTexte(lang === "en" ? `${jour}, ${pad(d.getHours())}:${pad(d.getMinutes())}` : `${jour} à ${d.getHours()} h ${pad(d.getMinutes())}`);
+}
+
 async function exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, nameOf, association, L, lang }) {
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
   const doc = new jsPDF({ unit: "pt", format: "letter" });
-  const x = 40;
-  const W = 532;
-  let y = 50;
-  const fmt = (d) => (d ? formatEventDateTime(d, lang) : "—");
-  const ensure = (h) => { if (y + h > 740) { doc.addPage(); y = 50; } };
-  const titre = (s) => { ensure(30); y += 8; doc.setFontSize(11.5); doc.setFont(undefined, "bold"); doc.text(s, x, y); y += 14; doc.setFont(undefined, "normal"); doc.setFontSize(9.5); };
-  const ligne = (s) => { const parts = doc.splitTextToSize(s, W); ensure(parts.length * 12); doc.text(parts, x, y); y += parts.length * 12; };
-  const table = (head, body) => {
-    autoTable(doc, { startY: y, head: [head], body, styles: { fontSize: 9.5 }, headStyles: { fillColor: [14, 124, 102] }, margin: { left: x, right: x } });
-    y = (doc.lastAutoTable?.finalY || y) + 10;
+  const T = (s) => pdfTexte(s);
+  const D = (iso) => pdfDate(iso, lang);
+  const PAGE_W = doc.internal.pageSize.getWidth();
+  const PAGE_H = doc.internal.pageSize.getHeight();
+  const M = 48; // marge
+  const W = PAGE_W - 2 * M;
+  const BLEU = [31, 56, 100];
+  const VERT = [14, 124, 102];
+  const ROUGE = [192, 57, 43];
+  const GRIS = [104, 111, 125];
+  let y = 0;
+
+  const placeLibre = (h) => { if (y + h > PAGE_H - 60) { doc.addPage(); y = 56; } };
+  const section = (titre) => {
+    placeLibre(46);
+    y += 14;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...BLEU);
+    doc.text(T(titre).toUpperCase(), M, y);
+    doc.setDrawColor(...VERT); doc.setLineWidth(1.2);
+    doc.line(M, y + 5, M + W, y + 5);
+    y += 14;
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+  };
+  const paragraphe = (txt, { size = 10, color = [0, 0, 0], bold = false } = {}) => {
+    doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(size); doc.setTextColor(...color);
+    const lignes = doc.splitTextToSize(T(txt), W);
+    placeLibre(lignes.length * size * 1.35 + 4);
+    doc.text(lignes, M, y + size, { lineHeightFactor: 1.35 });
+    y += lignes.length * size * 1.35 + 6;
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal");
+  };
+  // Tableau « libellé : valeur » (calendrier, participation…).
+  const fiche = (lignes) => {
+    autoTable(doc, {
+      startY: y,
+      body: lignes.map(([k, v]) => [T(k), T(v)]),
+      theme: "plain",
+      styles: { font: "helvetica", fontSize: 10, cellPadding: { top: 4, bottom: 4, left: 6, right: 6 }, valign: "middle", overflow: "linebreak" },
+      columnStyles: { 0: { cellWidth: 170, fontStyle: "bold", textColor: BLEU }, 1: { cellWidth: W - 170 } },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: M, right: M, top: 56, bottom: 60 },
+    });
+    y = doc.lastAutoTable.finalY + 6;
+  };
+  const tableau = (head, body, columnStyles = {}) => {
+    autoTable(doc, {
+      startY: y,
+      head: [head.map(T)],
+      body: body.map((r) => r.map(T)),
+      theme: "grid",
+      styles: { font: "helvetica", fontSize: 10, cellPadding: 5, lineColor: [220, 224, 230], lineWidth: 0.5, valign: "middle", overflow: "linebreak" },
+      headStyles: { fillColor: VERT, textColor: 255, fontStyle: "bold" },
+      columnStyles,
+      margin: { left: M, right: M, top: 56, bottom: 60 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
   };
 
-  doc.setFontSize(16); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || "", x, y); y += 20;
-  doc.setFontSize(13); doc.text(L.pdf_title, x, y); y += 18;
-  doc.setFontSize(12); doc.text(el.titre || "", x, y); y += 14;
-  doc.setFont(undefined, "normal"); doc.setFontSize(9);
-  doc.text(`${L.pdf_generated} ${new Date().toLocaleString(lang === "en" ? "en-CA" : "fr-CA")}`, x, y); y += 8;
-  doc.setFontSize(9.5);
-  if (el.description) { y += 6; ligne(el.description); }
+  // ----- En-tête -----
+  doc.setFillColor(...BLEU);
+  doc.rect(0, 0, PAGE_W, 78, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(17);
+  doc.text(T(association?.nom || ""), M, 34);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+  doc.text(T(L.pdf_title), M, 56);
+  doc.setFontSize(8.5);
+  doc.text(T(`${L.pdf_generated} ${D(new Date().toISOString())}`), PAGE_W - M, 56, { align: "right" });
+  doc.setTextColor(0, 0, 0);
+  y = 104;
 
-  titre(L.pdf_calendar);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(...BLEU);
+  const titreLignes = doc.splitTextToSize(T(el.titre || ""), W);
+  doc.text(titreLignes, M, y);
+  y += (titreLignes.length - 1) * 18 + 8;
+  doc.setTextColor(0, 0, 0);
+  if (el.description) paragraphe(el.description, { size: 10, color: GRIS });
+  paragraphe(
+    el.proclame_le ? fill(L.proclaimed_on, { date: D(el.proclame_le), nom: el.proclame_par_nom || "-" }) : L.pdf_not_proclaimed,
+    { size: 10, bold: true, color: el.proclame_le ? VERT : ROUGE },
+  );
+
+  // ----- Calendrier -----
+  section(L.pdf_calendar);
   const recoursFin = el.proclame_le ? new Date(new Date(el.proclame_le).getTime() + (el.delai_recours_jours || 0) * 86400000).toISOString() : null;
-  table([L.pdf_calendar, ""], [
-    [L.step_candidatures, `${fmt(el.candidatures_debut)} → ${fmt(el.candidatures_fin)}`],
-    [L.step_validation, fmt(el.validation_fin)],
-    [L.step_scrutin, `${fmt(el.date_debut)} → ${fmt(el.date_fin)}`],
-    [L.step_proclamation, el.proclame_le ? `${fmt(el.proclame_le)} → ${fmt(recoursFin)}` : "—"],
+  const periode = (a, b) => (a && b ? fill(L.pdf_from_to, { a: D(a), b: D(b) }) : b ? fill(L.pdf_until, { a: D(b) }) : a ? D(a) : "-");
+  fiche([
+    [L.step_candidatures, periode(el.candidatures_debut, el.candidatures_fin || el.date_debut)],
+    [L.step_validation, el.validation_fin ? fill(L.pdf_until, { a: D(el.validation_fin) }) : "-"],
+    [L.step_scrutin, periode(el.date_debut, el.date_fin)],
+    [L.step_proclamation, el.proclame_le ? periode(el.proclame_le, recoursFin) : "-"],
   ]);
 
-  titre(L.pdf_comite);
+  // ----- Comité -----
+  section(L.pdf_comite);
   const membresComite = [...comite].sort((a, b) => (a.role === "president" ? 0 : 1) - (b.role === "president" ? 0 : 1));
-  table([L.pdf_member, ""], membresComite.map((c) => [nameOf(c.member_id), L[`role_${c.role}`]]));
+  if (membresComite.length) {
+    tableau([L.pdf_member, L.pdf_role], membresComite.map((c) => [nameOf(c.member_id), L[`role_${c.role}`]]), { 0: { cellWidth: W * 0.55, fontStyle: "bold" } });
+  } else paragraphe(L.pdf_none, { color: GRIS });
 
-  titre(L.pdf_rules);
+  // ----- Règles -----
+  section(L.pdf_rules);
   const regles = [L.p_actif];
   if (el.anciennete_min_mois > 0) regles.push(fill(L.p_anciennete, { n: el.anciennete_min_mois }));
   if (el.exiger_cotisation) regles.push(L.p_cotisation);
+  if (el.quorum_pct != null) regles.push(fill(L.p_quorum, { n: el.quorum_pct }));
   regles.push(el.procurations_autorisees === false ? L.p_no_procurations : L.p_procurations);
-  ligne(regles.join(" · "));
+  paragraphe(regles.map((r) => `- ${r}`).join("\n"));
 
-  titre(L.pdf_participation);
+  // ----- Participation -----
+  section(L.pdf_participation);
   const inscrits = etat?.inscrits || 0;
   const votants = etat?.votants || 0;
+  const quorumKo = etat?.quorum_atteint === false;
   const quorum = etat?.quorum_requis == null ? L.pdf_quorum_none
-    : `${etat.quorum_requis} (${el.quorum_pct} %) — ${etat.quorum_atteint ? L.pdf_quorum_ok : L.pdf_quorum_ko}`;
+    : `${etat.quorum_requis} (${el.quorum_pct} %) - ${etat.quorum_atteint ? L.pdf_quorum_ok : L.pdf_quorum_ko}`;
   const procValidees = procurations.filter((p) => p.statut === "validee").length;
-  table([L.pdf_participation, ""], [
+  fiche([
     [L.pdf_inscrits, String(inscrits)],
     [L.pdf_votants, String(votants)],
     [L.pdf_taux, `${inscrits > 0 ? Math.round((votants / inscrits) * 100) : 0} %`],
     [L.pdf_procurations, `${etat?.votants_par_procuration || 0} / ${procValidees}`],
     [L.pdf_quorum, quorum],
   ]);
-  ligne(L.pdf_secret);
+  paragraphe(L.pdf_secret, { size: 8.5, color: GRIS });
 
-  titre(L.pdf_results);
-  if (etat?.quorum_atteint === false) { doc.setFont(undefined, "bold"); ligne(L.quorum_ko_result); doc.setFont(undefined, "normal"); y += 4; }
+  // ----- Résultats -----
+  section(L.pdf_results);
+  if (quorumKo) {
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+    const lignes = doc.splitTextToSize(T(L.quorum_ko_result), W - 20);
+    const h = lignes.length * 13.5 + 14;
+    placeLibre(h + 8);
+    doc.setFillColor(251, 228, 225); doc.setDrawColor(...ROUGE); doc.setLineWidth(0.8);
+    doc.roundedRect(M, y, W, h, 4, 4, "FD");
+    doc.setTextColor(...ROUGE);
+    doc.text(lignes, M + 10, y + 17, { lineHeightFactor: 1.35 });
+    doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "normal");
+    y += h + 10;
+  }
   const valides = cands.filter((c) => c.statut_candidature === "validee");
   postesDe(el, cands).forEach((poste) => {
     const dep = departages.find((d) => d.poste === poste);
     const tir = dep ? tirages[dep.tirage_id] : null;
-    const r = resultatPoste(valides.filter((c) => posteKey(c) === poste), etat?.voix, dep, tir, etat?.quorum_atteint === false);
+    const r = resultatPoste(valides.filter((c) => posteKey(c) === poste), etat?.voix, dep, tir, quorumKo);
     if (r.lignes.length === 0) return;
-    ensure(40);
-    doc.setFont(undefined, "bold"); doc.text(poste || L.no_poste, x, y); y += 6; doc.setFont(undefined, "normal");
-    table([L.col_candidate, L.col_votes, L.col_pct, ""], r.lignes.map(({ c, v }) => [
-      nameOf(c.member_id), String(v), `${r.total > 0 ? Math.round((v / r.total) * 100) : 0} %`,
-      r.gagnant === c.member_id ? (r.parTirage ? L.elected_by_draw : L.elected) : (r.egalite && v === r.lignes[0].v ? L.tie : ""),
-    ]));
-    if (r.parTirage && tir?.engagement) { doc.setFontSize(8); ligne(fill(L.pdf_tie_note, { h: tir.engagement })); doc.setFontSize(9.5); }
+    placeLibre(80);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...BLEU);
+    doc.text(T(poste || L.no_poste), M, y + 8);
+    doc.setTextColor(0, 0, 0);
+    y += 14;
+    tableau(
+      [L.col_candidate, L.col_votes, L.col_pct, L.pdf_col_result],
+      r.lignes.map(({ c, v }) => [
+        nameOf(c.member_id), String(v), `${r.total > 0 ? Math.round((v / r.total) * 100) : 0} %`,
+        r.gagnant === c.member_id ? (r.parTirage ? L.elected_by_draw : L.elected) : (r.egalite && v === r.lignes[0].v ? L.tie : ""),
+      ]),
+      { 0: { cellWidth: W * 0.46, fontStyle: "bold" }, 1: { cellWidth: W * 0.12, halign: "center" }, 2: { cellWidth: W * 0.12, halign: "center" }, 3: { textColor: VERT, fontStyle: "bold" } },
+    );
+    if (r.total === 0) paragraphe(L.no_votes, { size: 9, color: GRIS });
+    if (r.parTirage && tir?.engagement) paragraphe(fill(L.pdf_tie_note, { h: tir.engagement }), { size: 8, color: GRIS });
   });
 
-  titre(L.pdf_proclamation);
-  ligne(el.proclame_le
-    ? `${fill(L.proclaimed_on, { date: fmt(el.proclame_le), nom: el.proclame_par_nom || "—" })} ${fill(L.recours_until, { date: fmt(recoursFin) })}`
+  // ----- Proclamation -----
+  section(L.pdf_proclamation);
+  paragraphe(el.proclame_le
+    ? `${fill(L.proclaimed_on, { date: D(el.proclame_le), nom: el.proclame_par_nom || "-" })}\n${fill(L.recours_until, { date: D(recoursFin) })}`
     : L.pdf_not_proclaimed);
 
-  // Signatures : une ligne par membre du comité (2 par rangée).
-  const signataires = membresComite.length ? membresComite : [{ role: "president", member_id: null }, { role: "scrutateur", member_id: null }];
-  ensure(60 + Math.ceil(signataires.length / 2) * 60);
-  titre(L.pdf_sign);
-  y += 30;
+  // ----- Signatures : un cadre par membre du comité, 2 par rangée -----
+  const signataires = membresComite.length ? membresComite
+    : [{ role: "president", member_id: null }, { role: "scrutateur", member_id: null }, { role: "scrutateur", member_id: null }];
+  const BOX_W = (W - 20) / 2;
+  const BOX_H = 92;
+  placeLibre(46 + BOX_H);
+  section(L.pdf_sign);
+  y += 4;
   signataires.forEach((c, i) => {
-    const cx = x + (i % 2) * 270;
-    const cy = y + Math.floor(i / 2) * 60;
-    doc.line(cx, cy, cx + 220, cy);
-    doc.text(`${c.member_id ? nameOf(c.member_id) : ""} — ${L[`role_${c.role}`]}`, cx, cy + 12);
+    if (i % 2 === 0) placeLibre(BOX_H + 12);
+    const bx = M + (i % 2) * (BOX_W + 20);
+    const by = y;
+    doc.setDrawColor(200, 205, 212); doc.setLineWidth(0.6);
+    doc.roundedRect(bx, by, BOX_W, BOX_H, 4, 4, "S");
+    doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.setTextColor(0, 0, 0);
+    doc.text(T(c.member_id ? nameOf(c.member_id) : "...................................."), bx + 10, by + 18, { maxWidth: BOX_W - 20 });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(...GRIS);
+    doc.text(T(L[`role_${c.role}`]), bx + 10, by + 31);
+    doc.setDrawColor(...GRIS);
+    doc.line(bx + 10, by + 66, bx + BOX_W - 10, by + 66);
+    doc.setFontSize(8);
+    doc.text(T(L.pdf_signature), bx + 10, by + 78);
+    doc.text(T(`${L.pdf_date} : ____ / ____ / ________`), bx + BOX_W - 10, by + 78, { align: "right" });
+    doc.setTextColor(0, 0, 0);
+    if (i % 2 === 1 || i === signataires.length - 1) y += BOX_H + 12;
   });
-  doc.save(`${(el.titre || "election").replace(/[^a-z0-9]+/gi, "_")}_PV.pdf`);
+
+  // ----- Pied de page sur chaque page -----
+  const n = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= n; p++) {
+    doc.setPage(p);
+    doc.setDrawColor(220, 224, 230); doc.setLineWidth(0.5);
+    doc.line(M, PAGE_H - 36, PAGE_W - M, PAGE_H - 36);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...GRIS);
+    doc.text(T(`${association?.nom || ""} - ${L.pdf_title} - ${el.titre || ""}`), M, PAGE_H - 24, { maxWidth: W - 90 });
+    doc.text(T(fill(L.pdf_page, { p, n })), PAGE_W - M, PAGE_H - 24, { align: "right" });
+  }
+
+  const nomFichier = (el.titre || "election").normalize("NFD").replace(/[\u0300-\u036F]/g, "").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");
+  doc.save(`PV_${nomFichier || "election"}.pdf`);
 }
