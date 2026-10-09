@@ -104,6 +104,7 @@ const TXT = {
     proc_validate_btn: "Valider", proc_refuse_btn: "Refuser",
     results_title: "Résultats",
     col_candidate: "Candidat(e)", col_votes: "Voix", col_pct: "%",
+    quorum_ko_result: "Quorum non atteint : le scrutin n'est pas valable, aucun(e) candidat(e) n'est élu(e). Les voix sont données à titre d'information ; l'élection est à reprendre.",
     elected: "Élu(e)", tie: "Égalité", elected_by_draw: "Élu(e) par tirage au sort",
     no_votes: "Aucun vote exprimé pour ce poste.",
     tie_help: "Égalité en tête : le bureau prépare un tirage au sort vérifiable entre les ex æquo, puis le lance en direct dans la rubrique « Tirages au sort ».",
@@ -217,6 +218,7 @@ const TXT = {
     proc_validate_btn: "Approve", proc_refuse_btn: "Refuse",
     results_title: "Results",
     col_candidate: "Candidate", col_votes: "Votes", col_pct: "%",
+    quorum_ko_result: "Quorum not reached: the vote is not valid and no candidate is elected. Votes are shown for information only; the election must be held again.",
     elected: "Elected", tie: "Tie", elected_by_draw: "Elected by draw",
     no_votes: "No vote cast for this position.",
     tie_help: "Tie at the top: the board prepares a verifiable draw between the tied candidates, then runs it live in the \"Draws\" section.",
@@ -523,13 +525,15 @@ function Stepper({ el, etape, L, lang }) {
 
 // ---------------------------------------------------------------------
 // Résultat d'un poste : voix, élu(s), égalité éventuelle et départage.
-function resultatPoste(cands, voix, departage, tirage) {
+// Quorum non atteint (signalé au premier test de l'utilisateur, 2026-10-09) :
+// le scrutin n'est pas valable — voix affichées, mais personne n'est élu.
+function resultatPoste(cands, voix, departage, tirage, quorumKo = false) {
   const lignes = cands.map((c) => ({ c, v: Number(voix?.[c.id] || 0) })).sort((a, b) => b.v - a.v);
   const total = lignes.reduce((s, x) => s + x.v, 0);
   const max = lignes.length ? lignes[0].v : 0;
   const tete = total > 0 ? lignes.filter((x) => x.v === max) : [];
-  const egalite = tete.length > 1;
-  let gagnant = tete.length === 1 ? tete[0].c.member_id : null;
+  const egalite = !quorumKo && tete.length > 1;
+  let gagnant = !quorumKo && tete.length === 1 ? tete[0].c.member_id : null;
   let parTirage = false;
   if (egalite && departage && tirage?.statut === "termine") {
     const premier = (tirage.resultat || []).find((r) => Number(r.position) === 1);
@@ -635,7 +639,7 @@ function ElectionCard({ el, etape, etat, cands, comite, procurations, departages
 
       {/* Résultats */}
       {close && voix && (
-        <Resultats el={el} etape={etape} postes={postes} valides={valides} voix={voix} departages={departages} tirages={tirages} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} monRole={monRole} comiteComplet={comiteComplet} L={L} rpc={rpc} setInfo={setInfo} />
+        <Resultats el={el} etape={etape} quorumKo={etat?.quorum_atteint === false} postes={postes} valides={valides} voix={voix} departages={departages} tirages={tirages} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} monRole={monRole} comiteComplet={comiteComplet} L={L} rpc={rpc} setInfo={setInfo} />
       )}
     </Card>
   );
@@ -937,11 +941,11 @@ function Bulletin({ el, titre, postes, valides, emargements, pour, mandant, name
 }
 
 // ---------------------------------------------------------------------
-function Resultats({ el, etape, postes, valides, voix, departages, tirages, nameOf, photoOf, isBureau, monRole, comiteComplet, L, rpc, setInfo }) {
+function Resultats({ el, etape, quorumKo, postes, valides, voix, departages, tirages, nameOf, photoOf, isBureau, monRole, comiteComplet, L, rpc, setInfo }) {
   const parPoste = postes.map((poste) => {
     const dep = departages.find((d) => d.poste === poste);
     const tir = dep ? tirages[dep.tirage_id] : null;
-    return { poste, dep, tir, ...resultatPoste(valides.filter((c) => posteKey(c) === poste), voix, dep, tir) };
+    return { poste, dep, tir, ...resultatPoste(valides.filter((c) => posteKey(c) === poste), voix, dep, tir, quorumKo) };
   }).filter((r) => r.lignes.length > 0);
   const egaliteNonResolue = parPoste.some((r) => r.egalite && !r.parTirage);
 
@@ -952,6 +956,7 @@ function Resultats({ el, etape, postes, valides, voix, departages, tirages, name
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Gavel size={15} color={TEAL} /> {L.results_title}</div>
+      {quorumKo && <p style={{ fontSize: 12.5, fontWeight: 600, color: RED, background: "#FBE4E1", borderRadius: 8, padding: "8px 12px", margin: "0 0 10px" }}>{L.quorum_ko_result}</p>}
       {parPoste.map((r) => (
         <div key={r.poste || "_"} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--primary)", textTransform: "uppercase", marginBottom: 6 }}>{r.poste || L.no_poste}</div>
@@ -1059,11 +1064,12 @@ async function exporterPvElection({ el, etat, cands, comite, departages, tirages
   ligne(L.pdf_secret);
 
   titre(L.pdf_results);
+  if (etat?.quorum_atteint === false) { doc.setFont(undefined, "bold"); ligne(L.quorum_ko_result); doc.setFont(undefined, "normal"); y += 4; }
   const valides = cands.filter((c) => c.statut_candidature === "validee");
   postesDe(el, cands).forEach((poste) => {
     const dep = departages.find((d) => d.poste === poste);
     const tir = dep ? tirages[dep.tirage_id] : null;
-    const r = resultatPoste(valides.filter((c) => posteKey(c) === poste), etat?.voix, dep, tir);
+    const r = resultatPoste(valides.filter((c) => posteKey(c) === poste), etat?.voix, dep, tir, etat?.quorum_atteint === false);
     if (r.lignes.length === 0) return;
     ensure(40);
     doc.setFont(undefined, "bold"); doc.text(poste || L.no_poste, x, y); y += 6; doc.setFont(undefined, "normal");
