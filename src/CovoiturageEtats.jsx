@@ -15,6 +15,7 @@ import { useState, useMemo } from "react";
 import { FileText, Download, BarChart3, Leaf, Car, Users, Wallet, X } from "lucide-react";
 import { Card, Btn, Pill, StatCard, inputStyle, money, TEAL, TEAL_LIGHT } from "./shared";
 import { trancheLabel, buildEtatRow } from "./covoiturageOutils";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 
 const AMBER = "#8A5A00";
 const AMBER_LIGHT = "#FDF3DF";
@@ -109,7 +110,7 @@ function totals(rows) {
 
 function routeText(r) { return r.offer ? `${r.offer.point_depart} -> ${r.offer.point_arrivee}` : "—"; }
 
-export default function EtatsPanel({ t, lang, devise, profile, isBureau, bookings, offers, members, vehicules }) {
+export default function EtatsPanel({ t, lang, devise, profile, isBureau, association, bookings, offers, members, vehicules }) {
   const E = TXT_ETATS[lang === "en" ? "en" : "fr"];
   const [view, setView] = useState("driver"); // driver | passenger | dashboard
   const [month, setMonth] = useState(currentMonth());
@@ -175,27 +176,32 @@ export default function EtatsPanel({ t, lang, devise, profile, isBureau, booking
     catch { window.alert(t("rap_missing_deps")); return; }
     const { jsPDF } = jsPDFmod;
     const autoTable = autoTableMod.default;
-    const doc = new jsPDF({ orientation: "landscape" });
-    doc.setFontSize(13);
-    doc.text(title, 14, 15);
+    // Unité « pt » (au lieu des mm par défaut) : celle de l'en-tête officiel.
+    const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+    // Logo + mentions légales (pdfOfficiel.js) : demande de l'utilisateur
+    // (2026-10-09), sur tous les documents générés, pour leur authenticité.
+    let y = await enTeteOfficiel(doc, association, { titre: title, sousTitre: E.fuel_note });
     doc.setFontSize(8.5);
-    doc.text(E.fuel_note, 14, 21);
-    doc.text(`${E.tot_trips}: ${tot.trips}   ${E.tot_km}: ${tot.km.toFixed(1)}   ${E.co2}: ${Math.round(tot.kmPassagers * CO2_KG_PAR_KM)}   ${E.tot_due}: ${money(tot.due, devise)}   ${E.tot_paid}: ${money(tot.paid, devise)}   ${E.tot_unpaid}: ${money(tot.unpaid, devise)}`, 14, 26);
+    doc.text(`${E.tot_trips}: ${tot.trips}   ${E.tot_km}: ${tot.km.toFixed(1)}   ${E.co2}: ${Math.round(tot.kmPassagers * CO2_KG_PAR_KM)}   ${E.tot_due}: ${money(tot.due, devise)}   ${E.tot_paid}: ${money(tot.paid, devise)}   ${E.tot_unpaid}: ${money(tot.unpaid, devise)}`, 40, y);
+    y += 10;
     autoTable(doc, {
-      startY: 31,
+      startY: y,
       head: [columns.map((c) => c.h)],
       body: rows.map((r) => columns.map((c) => c.v(r))),
       styles: { fontSize: 7.5 },
-      headStyles: { fillColor: [14, 124, 102] },
+      headStyles: { fillColor: couleurAssociation(association) },
+      margin: { left: 40, right: 40 },
     });
     if (view === "dashboard" && byDriver.length) {
       autoTable(doc, {
         head: [[E.by_driver, E.tot_trips, E.tot_km, E.tot_due, E.tot_paid, E.tot_unpaid]],
         body: byDriver.map((d) => [d.nom, d.trips, d.km.toFixed(1), money(d.due, devise), money(d.paid, devise), money(d.unpaid, devise)]),
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [31, 56, 100] },
+        headStyles: { fillColor: couleurAssociation(association) },
+        margin: { left: 40, right: 40 },
       });
     }
+    piedsDePageOfficiels(doc, association, { texte: title, libellePage: (p, n) => `${p} / ${n}` });
     doc.save(`${fileBase}.pdf`);
   }
 

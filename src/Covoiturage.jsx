@@ -26,6 +26,7 @@ import { Car, Plus, Pencil, Trash2, MapPin, Calendar, Users, Repeat, Link2, Sear
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import GrilleTarifaireCovoiturage from "./CovoiturageTarifs";
 import { FicheConducteurModal, ConducteursAdmin, VehiculePhoto, DriverAvatar } from "./CovoiturageConducteur";
 import EtatsPanel, { FicheTrajetModal } from "./CovoiturageEtats";
@@ -1197,7 +1198,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
             <ConducteursAdmin members={members} offers={offers} vehicules={vehicules} plaques={plaques} documents={documents}
               onToggleVerify={toggleVerifieMembre} onChanged={() => load(true)} />
           </div>
-          <AdministrationPanel t={t} lang={lang} devise={devise}
+          <AdministrationPanel t={t} lang={lang} devise={devise} association={association}
             adminStats={adminStats} incidents={incidents} incidentContext={incidentContext}
             onTraiterSignalement={traiterSignalement}
             members={adminFilteredMembers} memberSearch={adminMemberSearch} onMemberSearch={setAdminMemberSearch}
@@ -1216,7 +1217,7 @@ export default function Covoiturage({ profile, isBureau, association }) {
             <GrilleTarifaireCovoiturage profile={profile} association={association} onSaved={() => load(true)} />
           </>
         ) : tab === "etats" ? (
-          <EtatsPanel t={t} lang={lang} devise={devise} profile={profile} isBureau={isBureau}
+          <EtatsPanel t={t} lang={lang} devise={devise} profile={profile} isBureau={isBureau} association={association}
             bookings={bookings} offers={offers} members={members} vehicules={vehicules} />
         ) : tab === "reservations" ? (
           <BookingsPanel t={t} lang={lang} devise={devise}
@@ -2076,7 +2077,7 @@ function BookingsPanel({
 // (« les États » demandés) — rien de tout ça n'était consultable avant.
 // =====================================================================
 function AdministrationPanel({
-  t, lang, devise, adminStats, incidents, incidentContext, onTraiterSignalement,
+  t, lang, devise, association, adminStats, incidents, incidentContext, onTraiterSignalement,
   members, memberSearch, onMemberSearch, onToggleVerify, onToggleSuspend,
   bookingStatutOrder, registreRows, buildDriverDossier,
 }) {
@@ -2173,7 +2174,7 @@ function AdministrationPanel({
         </div>
       </div>
 
-      <RegistreCourses t={t} lang={lang} devise={devise} rows={registreRows} bookingStatutOrder={bookingStatutOrder} buildDriverDossier={buildDriverDossier} />
+      <RegistreCourses t={t} lang={lang} devise={devise} association={association} rows={registreRows} bookingStatutOrder={bookingStatutOrder} buildDriverDossier={buildDriverDossier} />
     </div>
   );
 }
@@ -2186,7 +2187,7 @@ function AdministrationPanel({
 // Toutes les réservations (quel que soit le statut), filtrables, avec
 // adresses, temps d'attente/durée effective et signalements liés.
 // =====================================================================
-function RegistreCourses({ t, lang, rows, bookingStatutOrder, buildDriverDossier }) {
+function RegistreCourses({ t, lang, association, rows, bookingStatutOrder, buildDriverDossier }) {
   const [statutFilter, setStatutFilter] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -2208,7 +2209,7 @@ function RegistreCourses({ t, lang, rows, bookingStatutOrder, buildDriverDossier
 
   async function exportPdf() {
     setExporting(true);
-    try { await exportRegistrePdf(filtered, t, lang); }
+    try { await exportRegistrePdf(filtered, t, lang, association); }
     catch (e) { console.error("[Covoiturage registre PDF]", e); window.alert(t("cov_registre_pdf_failed")); }
     finally { setExporting(false); }
   }
@@ -2335,7 +2336,7 @@ function DriverDossierModal({ t, lang, dossier, onClose }) {
 
 // PDF à la demande du registre filtré (distinct du rapport annuel) — même
 // convention d'import dynamique que RapportAnnuel.jsx.
-async function exportRegistrePdf(rows, t, lang) {
+async function exportRegistrePdf(rows, t, lang, association) {
   // Même convention que RapportAnnuel.jsx/buildPdf : jspdf-autotable v5
   // exporte une fonction autonome (autoTableMod.default), PAS une méthode
   // greffée sur doc — doc.autoTable(...) n'existe plus dans cette version
@@ -2349,11 +2350,14 @@ async function exportRegistrePdf(rows, t, lang) {
   }
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default;
-  const doc = new jsPDF();
-  doc.setFontSize(14);
-  doc.text(t("cov_registre_pdf_title"), 14, 16);
-  doc.setFontSize(9);
-  doc.text(t("cov_registre_pdf_generated_on").replace("{date}", formatDateTime(new Date().toISOString(), lang)), 14, 22);
+  // Unité « pt » (au lieu des mm par défaut) : celle de l'en-tête officiel.
+  const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+  // Logo + mentions légales (pdfOfficiel.js) : demande de l'utilisateur
+  // (2026-10-09), sur tous les documents générés, pour leur authenticité.
+  const yDebut = await enTeteOfficiel(doc, association, {
+    titre: t("cov_registre_pdf_title"),
+    sousTitre: t("cov_registre_pdf_generated_on").replace("{date}", formatDateTime(new Date().toISOString(), lang)),
+  });
   const body = rows.map(({ booking, offer, driver, passenger, attenteSec, dureeSec, incidents: rowIncidents }) => [
     formatDateTime(booking.created_at, lang),
     driver?.nom || "—",
@@ -2365,7 +2369,7 @@ async function exportRegistrePdf(rows, t, lang) {
     String(rowIncidents.length),
   ]);
   autoTable(doc, {
-    startY: 28,
+    startY: yDebut,
     head: [[
       t("cov_admin_registre_col_date"), t("cov_admin_registre_col_driver"), t("cov_admin_registre_col_passenger"),
       t("cov_admin_registre_col_route"), t("cov_admin_registre_col_statut"), t("cov_admin_registre_col_attente"),
@@ -2373,8 +2377,10 @@ async function exportRegistrePdf(rows, t, lang) {
     ]],
     body,
     styles: { fontSize: 7.5 },
-    headStyles: { fillColor: [14, 124, 102] },
+    headStyles: { fillColor: couleurAssociation(association) },
+    margin: { left: 40, right: 40 },
   });
+  piedsDePageOfficiels(doc, association, { texte: t("cov_registre_pdf_title"), libellePage: (p, n) => `${p} / ${n}` });
   doc.save(`registre-covoiturage-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 

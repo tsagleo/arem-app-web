@@ -28,6 +28,7 @@ import {
   Truck, PackageCheck, ShieldCheck, Upload, Users, Dices, PiggyBank, Eye, Lock, Receipt, BarChart3,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import {
   Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, money,
   formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED,
@@ -500,11 +501,9 @@ async function exporterPDF({ association, titre, sousTitre, lignes = [], tableau
   const autoTable = autoTableMod.default || autoTableMod;
   const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
   const x = 40;
-  let y = 46;
-  doc.setFontSize(15); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || "", x, y); y += 20;
-  doc.setFontSize(12.5); doc.text(titre, x, y); y += 16;
-  if (sousTitre) { doc.setFontSize(11); doc.text(sousTitre, x, y); y += 16; }
+  // Logo + mentions légales (pdfOfficiel.js) : demande de l'utilisateur
+  // (2026-10-09), sur tous les documents générés, pour leur authenticité.
+  let y = await enTeteOfficiel(doc, association, { titre, sousTitre, marge: x });
   doc.setFont(undefined, "normal"); doc.setFontSize(9.5);
   for (const l of lignes) {
     const morceaux = doc.splitTextToSize(l, 710);
@@ -513,11 +512,12 @@ async function exporterPDF({ association, titre, sousTitre, lignes = [], tableau
   for (const tb of tableaux) {
     y += 8;
     if (tb.titre) { doc.setFont(undefined, "bold"); doc.setFontSize(10.5); doc.text(tb.titre, x, y); doc.setFont(undefined, "normal"); y += 6; }
-    autoTable(doc, { startY: y, head: [tb.head], body: tb.body, styles: { fontSize: 8.5 }, headStyles: { fillColor: [14, 124, 102] }, margin: { left: x, right: x } });
+    autoTable(doc, { startY: y, head: [tb.head], body: tb.body, styles: { fontSize: 8.5 }, headStyles: { fillColor: couleurAssociation(association) }, margin: { left: x, right: x } });
     y = (doc.lastAutoTable?.finalY || y) + 14;
   }
   doc.setFontSize(8); doc.setTextColor(120);
   doc.text(new Date().toLocaleString("fr-CA"), x, doc.internal.pageSize.getHeight() - 20);
+  piedsDePageOfficiels(doc, association, { marge: x, texte: titre, libellePage: (p, n) => `${p} / ${n}` });
   doc.save(fichier);
 }
 

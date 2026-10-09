@@ -19,6 +19,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ShieldHalf, Plus, CalendarDays, MessageSquare, Gavel, FileText, Users, FileDown, Trash2, Send, Upload, Lock, Megaphone, CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { Section, Container, Card, Btn, Field, inputStyle, useLang, friendlyError, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
 
 const BUCKET = "comite-docs";
@@ -234,7 +235,7 @@ async function exporterPv({ reunion, association, membres, sujets, decisions, L,
     const n = doc.getNumberOfPages();
     for (let i = 1; i <= n; i++) {
       doc.setPage(i);
-      doc.setFontSize(8); doc.setTextColor(192, 57, 43); doc.setFont(undefined, "bold");
+      doc.setFontSize(8); doc.setTextColor(0); doc.setFont("helvetica", "bolditalic");
       doc.text(L.pdf_confidential, x, 24);
       doc.setTextColor(120); doc.setFont(undefined, "normal");
       doc.text(`${i} / ${n}`, 572, 24, { align: "right" });
@@ -251,10 +252,9 @@ async function exporterPv({ reunion, association, membres, sujets, decisions, L,
     lignes.forEach((l) => { saut(13); doc.text(l, x, y); y += 13; });
   };
 
-  doc.setFontSize(15); doc.setFont(undefined, "bold");
-  doc.text(association?.nom || "", x, y); y += 20;
-  doc.setFontSize(12.5); doc.text(L.pdf_title, x, y); y += 17;
-  doc.setFontSize(11.5); paragraphe(reunion.titre); y += 2;
+  // Logo + mentions légales (pdfOfficiel.js) : demande de l'utilisateur
+  // (2026-10-09), sur tous les documents générés, pour leur authenticité.
+  y = await enTeteOfficiel(doc, association, { titre: L.pdf_title, sousTitre: reunion.titre, marge: x });
   doc.setFont(undefined, "normal"); doc.setFontSize(10);
   [[L.pdf_date, reunion.date_reunion ? formatEventDateTime(reunion.date_reunion, lang) : "—"],
     [L.pdf_place, reunion.lieu || "—"],
@@ -286,7 +286,7 @@ async function exporterPv({ reunion, association, membres, sujets, decisions, L,
         d.diffusion === "bureau" ? L.diff_bureau : L.diff_comite,
       ]),
       styles: { fontSize: 9, cellPadding: 4 },
-      headStyles: { fillColor: [14, 124, 102] },
+      headStyles: { fillColor: couleurAssociation(association) },
       columnStyles: { 0: { cellWidth: 270 } },
       margin: { left: x, right: x, top: 40 },
     });
@@ -306,6 +306,7 @@ async function exporterPv({ reunion, association, membres, sujets, decisions, L,
   doc.text(L.pdf_generated.replace("{date}", formatEventDateTime(new Date().toISOString(), lang)), x, y);
   doc.setTextColor(0);
   bandeau();
+  piedsDePageOfficiels(doc, association, { marge: x, texte: L.pdf_title });
   doc.save(`${(reunion.titre || "comite").replace(/[^a-z0-9]+/gi, "_")}_PV_restreint.pdf`);
 }
 
