@@ -758,6 +758,39 @@ function BlockedAccountScreen() {
   );
 }
 
+// 2026-10-10 (signalé par l'utilisateur) — un compte qui rejoint par code
+// d'invitation n'a accès à l'espace qu'après validation du bureau
+// (profiles.acces_en_attente, sql/2026-10-10k_adhesion_validation_bureau.sql).
+// L'écran vérifie toutes les 30 s et s'ouvre dès la validation.
+const ATTENTE_TXT = {
+  fr: { titre: "Demande en attente de validation", texte: "Votre demande d'adhésion{a} a bien été transmise. Le bureau doit la valider avant que vous ayez accès à l'espace de l'association. Vous recevrez une notification dès qu'elle sera acceptée.", refus: "Votre demande d'adhésion{a} n'a pas été acceptée par le bureau. Contactez-le pour en savoir plus.", verifier: "Vérifier maintenant" },
+  en: { titre: "Request awaiting approval", texte: "Your membership request{a} has been sent. The board must approve it before you can access the association's space. You will be notified as soon as it is accepted.", refus: "Your membership request{a} was not accepted by the board. Contact them for more information.", verifier: "Check now" },
+};
+function PendingAccessScreen() {
+  const { t, lang } = useLang();
+  const T = ATTENTE_TXT[lang === "en" ? "en" : "fr"];
+  const [info, setInfo] = useState(null);
+  const verifier = useCallback(async () => {
+    const { data } = await supabase.rpc("mon_statut_adhesion");
+    if (data && data.en_attente === false) { window.location.reload(); return; }
+    if (data) setInfo(data);
+  }, []);
+  useEffect(() => { verifier(); const id = setInterval(verifier, 30000); return () => clearInterval(id); }, [verifier]);
+  const a = info?.association ? (lang === "en" ? ` to ${info.association}` : ` à « ${info.association} »`) : "";
+  const refus = info?.statut === "rejete";
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: BG, fontFamily: "Inter, sans-serif", flexDirection: "column", gap: 14, padding: 24, textAlign: "center" }}>
+      <ShieldCheck size={36} color={refus ? RED : EMERALD_DARK_DEFAULT} />
+      <h2 style={{ color: EMERALD_DARK_DEFAULT, margin: 0 }}>{T.titre}</h2>
+      <p style={{ color: "#5B6270", maxWidth: 420, margin: 0 }}>{(refus ? T.refus : T.texte).replace("{a}", a)}</p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+        {!refus && <Btn variant="outline" onClick={verifier}>{T.verifier}</Btn>}
+        <Btn onClick={() => supabase.auth.signOut()} style={{ background: EMERALD_DARK_DEFAULT, color: "white" }}>{t("action_logout")}</Btn>
+      </div>
+    </div>
+  );
+}
+
 // =====================================================================
 // CompleteJoinRequestForm — 2026-10-06, demandé par l'utilisateur.
 // =====================================================================
@@ -1702,7 +1735,7 @@ function AuthenticatedApp({ session }) {const { t } = useLang();
       if (e1) throw e1;
       setProfile(prof);
       let assocData = null, subData = null;
-      if (prof.association_id && !prof.compte_bloque) {
+      if (prof.association_id && !prof.compte_bloque && !prof.acces_en_attente) {
         const [{ data: assoc, error: e2 }, { data: sub }] = await Promise.all([
           supabase.from("associations").select("*").eq("id", prof.association_id).single(),
           supabase.from("subscriptions").select("*").eq("association_id", prof.association_id).order("created_at", { ascending: false }).limit(1).single(),
@@ -1785,6 +1818,7 @@ if (pendingJoinData) return <CompleteJoinRequestForm pendingJoinData={pendingJoi
 if (err) return <FullPageLoader text={err} />;
 if (!profile) return <FullPageLoader text={t("load_profile_missing")} />;
 if (profile.compte_bloque) return <BlockedAccountScreen />;
+if (profile.acces_en_attente) return <PendingAccessScreen />;
 
   const primary = association?.couleur_primaire || EMERALD_DARK_DEFAULT;
   const accent = association?.couleur_accent || "#C8963E";
