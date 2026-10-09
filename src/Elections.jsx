@@ -20,7 +20,7 @@
 // base : l'interface ne fait qu'afficher et proposer.
 // =====================================================================
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Vote, Trash2, FileDown, UserCheck, Users2, CheckCircle2, XCircle, Clock, Dices, Gavel, Handshake, ShieldCheck, Lock, FileSignature, Upload, FolderOpen } from "lucide-react";
+import { Vote, Trash2, FileDown, UserCheck, Users2, CheckCircle2, XCircle, Clock, Dices, Gavel, Handshake, ShieldCheck, Lock, FileSignature, Upload, FolderOpen, ChevronDown, ChevronRight, AlertCircle } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { pdfTexte, enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { Card, Btn, Field, Table, td, RuleBox, inputStyle, RED, TEAL, TEAL_LIGHT, friendlyError, datetimeLocalToISO, formatEventDateTime } from "./shared";
@@ -28,6 +28,15 @@ import { Card, Btn, Field, Table, td, RuleBox, inputStyle, RED, TEAL, TEAL_LIGHT
 const TXT = {
   fr: {
     create_title: "Organiser une élection",
+    tab_en_cours: "En cours ({n})", tab_terminees: "Terminées ({n})",
+    empty_cours: "Aucune élection en cours.", empty_archives: "Aucune élection terminée.",
+    vote_section: "Voter",
+    act_valider: "{n} candidature(s) à valider", act_proc: "{n} procuration(s) à valider",
+    act_comite: "Comité à compléter", act_vote: "Votre vote est attendu",
+    act_proclaim: "Résultats à proclamer", act_sign: "PV à signer",
+    badge_membres: "{n} membre(s)", badge_incomplet: "incomplet",
+    badge_cands: "{n} candidature(s)", badge_attente: "{n} en attente",
+    scrutin_du: "Scrutin : {a} → {b}", turnout: "Participation {p} %",
     f_title: "Titre", f_description: "Description",
     f_postes: "Postes à pourvoir (séparés par des virgules)", f_postes_ph: "Président, Trésorier, Secrétaire",
     f_cand_debut: "Ouverture des candidatures", f_cand_fin: "Clôture des candidatures",
@@ -159,6 +168,15 @@ const TXT = {
   },
   en: {
     create_title: "Organize an election",
+    tab_en_cours: "Ongoing ({n})", tab_terminees: "Completed ({n})",
+    empty_cours: "No ongoing election.", empty_archives: "No completed election.",
+    vote_section: "Vote",
+    act_valider: "{n} nomination(s) to review", act_proc: "{n} proxy(ies) to review",
+    act_comite: "Committee to complete", act_vote: "Your vote is awaited",
+    act_proclaim: "Results to proclaim", act_sign: "Minutes to sign",
+    badge_membres: "{n} member(s)", badge_incomplet: "incomplete",
+    badge_cands: "{n} nomination(s)", badge_attente: "{n} pending",
+    scrutin_du: "Voting: {a} → {b}", turnout: "Turnout {p}%",
     f_title: "Title", f_description: "Description",
     f_postes: "Positions to fill (comma-separated)", f_postes_ph: "President, Treasurer, Secretary",
     f_cand_debut: "Nominations open", f_cand_fin: "Nominations close",
@@ -352,6 +370,7 @@ export default function Elections({ profile, isBureau, association, members, t, 
   const [errorMsg, setErrorMsg] = useState("");
   const [info, setInfo] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [filtre, setFiltre] = useState(null); // "cours" | "archives" (null = automatique)
 
   const load = useCallback(async () => {
     const [{ data: el }, { data: cand }, { data: com, error: comErr }, { data: proc }, { data: dep }, { data: et }, { data: sig }] = await Promise.all([
@@ -449,9 +468,28 @@ export default function Elections({ profile, isBureau, association, members, t, 
       {errorMsg && <div style={{ background: "#FBE4E1", color: RED, padding: "8px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>{errorMsg}</div>}
       {info && <div style={{ background: TEAL_LIGHT, color: TEAL, padding: "8px 14px", borderRadius: 8, fontSize: 12.5, marginBottom: 12 }}>{info}</div>}
 
+      <style>{".volet-body .bloc-titre{display:none!important}.volet-body .bloc-cadre{border:none!important;padding:0!important;margin:0!important}"}</style>
+      {(() => {
+        const nCours = elections.filter((e) => etapeElection(e, now) !== "terminee").length;
+        const nFin = elections.length - nCours;
+        const vue = filtre ?? (nCours || !nFin ? "cours" : "archives");
+        const pill = (id, label) => (
+          <button key={id} onClick={() => setFiltre(id)} style={{ fontWeight: 600, fontSize: 12.5, padding: "7px 14px", borderRadius: 999, cursor: "pointer", border: vue === id ? "1px solid transparent" : "1px solid #DCE0E8", background: vue === id ? "var(--primary)" : "white", color: vue === id ? "white" : "#4A5468" }}>{label}</button>
+        );
+        return (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+            {pill("cours", fill(L.tab_en_cours, { n: nCours }))}
+            {pill("archives", fill(L.tab_terminees, { n: nFin }))}
+          </div>
+        );
+      })()}
       {isBureau && <CreateElection L={L} t={t} profile={profile} onCreated={load} setErrorMsg={setErrorMsg} />}
 
-      {elections.map((el) => (
+      {elections.filter((el) => {
+        const nCours = elections.filter((e) => etapeElection(e, now) !== "terminee").length;
+        const vue = filtre ?? (nCours || elections.length === nCours ? "cours" : "archives");
+        return (etapeElection(el, now) === "terminee") === (vue === "archives");
+      }).map((el) => (
         <ElectionCard
           key={el.id}
           el={el} etape={etapeElection(el, now)} etat={etats[el.id]}
@@ -470,6 +508,12 @@ export default function Elections({ profile, isBureau, association, members, t, 
         />
       ))}
       {elections.length === 0 && <p style={{ color: GREY, fontStyle: "italic" }}>{L.empty}</p>}
+      {elections.length > 0 && (() => {
+        const nCours = elections.filter((e) => etapeElection(e, now) !== "terminee").length;
+        const vue = filtre ?? (nCours || elections.length === nCours ? "cours" : "archives");
+        const n = vue === "archives" ? elections.length - nCours : nCours;
+        return n === 0 ? <p style={{ color: GREY, fontStyle: "italic" }}>{vue === "archives" ? L.empty_archives : L.empty_cours}</p> : null;
+      })()}
     </>
   );
 }
@@ -603,6 +647,7 @@ function ElectionCard({ el, etape, etat, cands, comite, procurations, departages
   const maProcPortee = procActives.find((p) => p.mandataire_id === myId);
 
   const etapeColor = etape === "scrutin" ? TEAL : close ? "#4A5468" : "#B7791F";
+  const [ouvert, setOuvert] = useState(false);
 
   async function supprimer() {
     await rpc("supprimer_election", { p_election_id: el.id }, L.confirm_delete);
@@ -619,75 +664,132 @@ function ElectionCard({ el, etape, etat, cands, comite, procurations, departages
   if (el.quorum_pct != null) regles.push(fill(L.p_quorum, { n: el.quorum_pct }));
   regles.push(el.procurations_autorisees === false ? L.p_no_procurations : L.p_procurations);
 
+  // Ce qui attend l'utilisateur sur cette élection (affiché replié).
+  const actions = [];
+  const candAttente = cands.filter((c) => c.statut_candidature === "en_attente").length;
+  const procAttente = procurations.filter((x) => x.statut === "en_attente").length;
+  if (avant && monRole && candAttente) actions.push(fill(L.act_valider, { n: candAttente }));
+  if (avant && monRole && procAttente) actions.push(fill(L.act_proc, { n: procAttente }));
+  if (isBureau && avant && !comiteComplet && !el.proclame_le) actions.push(L.act_comite);
+  const pourVoter = [];
+  if (etape === "scrutin" && moi && !moi.electeur && maProcDonnee?.statut !== "validee") pourVoter.push(myId);
+  if (etape === "scrutin" && maProcPortee?.statut === "validee") pourVoter.push(maProcPortee.mandant_id);
+  const posteOuverts = postes.filter((po) => valides.some((c) => posteKey(c) === po));
+  if (pourVoter.some((pid) => posteOuverts.some((po) => !emargements.some((e) => e.member_id === pid && e.poste === po)))) actions.push(L.act_vote);
+  if (etape === "depouillement" && monRole === "president") actions.push(L.act_proclaim);
+  if (el.proclame_le && monRole && !signatures.some((x) => x.member_id === myId)) actions.push(L.act_sign);
+  const pct = etat?.inscrits ? Math.round((etat.votants / etat.inscrits) * 100) : null;
+  const court = (d) => (d ? new Date(d).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA", { day: "numeric", month: "short" }) + " " + new Date(d).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "numeric", minute: "2-digit" }) : "");
+
   return (
-    <Card style={{ marginBottom: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h4 style={{ fontSize: 15, margin: 0 }}>{el.titre}</h4>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <Pill color={etapeColor}>{L[`etape_${etape}`]}</Pill>
-          {voix && <Btn variant="outline" style={smallBtn} onClick={() => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang })}><FileDown size={13} /> {L.pv_btn}</Btn>}
-          {isBureau && etape === "scrutin" && <Btn variant="outline" style={smallBtn} onClick={cloreMaintenant}><Lock size={13} /> {L.close_now_btn}</Btn>}
-          {isBureau && <button onClick={supprimer} style={linkDanger}><Trash2 size={11} /> {L.delete_btn}</button>}
-        </div>
-      </div>
-      {el.description && <p style={{ fontSize: 12.5, color: "#5B6270", margin: "6px 0 0" }}>{el.description}</p>}
-      <Stepper el={el} etape={etape} L={L} lang={lang} />
-      <p style={{ fontSize: 12, color: "#4A5468", margin: "0 0 12px" }}>{fill(L.params, { regles: regles.join(" · ") })}</p>
-
-      {el.proclame_le && (
-        <RuleBox>
-          {fill(L.proclaimed_on, { date: formatEventDateTime(el.proclame_le, lang), nom: el.proclame_par_nom || "—" })}
-          {etape === "recours" && <><br />{fill(L.recours_until, { date: formatEventDateTime(new Date(new Date(el.proclame_le).getTime() + (el.delai_recours_jours || 0) * 86400000).toISOString(), lang) })}</>}
-        </RuleBox>
-      )}
-
-      {/* Comité électoral */}
-      <ComiteBlock el={el} comite={comite} cands={cands} members={members} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} comiteComplet={comiteComplet} L={L} t={t} reload={reload} setErrorMsg={setErrorMsg} />
-
-      {/* Ma situation */}
-      {!["recours", "terminee"].includes(etape) && (
-        <div style={{ fontSize: 12.5, margin: "4px 0 14px", display: "flex", alignItems: "center", gap: 6 }}>
-          <UserCheck size={14} color={TEAL} /> <b>{L.my_situation} :</b>{" "}
-          {!myId ? L.not_linked : !moi ? "…" : moi.electeur ? fill(L.elig_no, { motif: L[`m_${moi.electeur}`] || moi.electeur }) : L.elig_ok}
-          {monRole && <Pill color={TEAL}>{L[`role_${monRole}`]}</Pill>}
-        </div>
-      )}
-
-      {/* Participation en direct */}
-      {(etape === "scrutin" || close) && etat && <Participation etat={etat} etape={etape} hasVoix={!!voix} L={L} />}
-
-      {/* Candidatures */}
-      <CandidaturesBlock el={el} etape={etape} avant={avant} cands={cands} postes={postes} eligib={eligib} members={members} nameOf={nameOf} photoOf={photoOf} myId={myId} moi={moi} monRole={monRole} isBureau={isBureau} L={L} t={t} rpc={rpc} reload={reload} setErrorMsg={setErrorMsg} />
-
-      {/* Procurations */}
-      {el.procurations_autorisees !== false && (avant || procurations.length > 0) && (
-        <ProcurationsBlock el={el} avant={avant} procurations={procurations} eligib={eligib} members={members} nameOf={nameOf} myId={myId} moi={moi} monRole={monRole} maProcDonnee={maProcDonnee} maProcPortee={maProcPortee} L={L} rpc={rpc} />
-      )}
-
-      {/* Bulletins */}
-      {etape === "scrutin" && myId && (
-        <>
-          {moi && !moi.electeur && maProcDonnee?.statut !== "validee" && (
-            <Bulletin el={el} titre={L.ballot_title} postes={postes} valides={valides} emargements={emargements} pour={myId} mandant={null} nameOf={nameOf} photoOf={photoOf} L={L} rpc={rpc} />
+    <Card style={{ marginBottom: 12, padding: 0, overflow: "hidden" }}>
+      <button onClick={() => setOuvert((o) => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: ouvert ? "#F8FAFB" : "white", border: "none", cursor: "pointer", textAlign: "left" }}>
+        {ouvert ? <ChevronDown size={18} color="#4A5468" /> : <ChevronRight size={18} color="#4A5468" />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1E2533" }}>{el.titre}</div>
+          <div style={{ fontSize: 12, color: GREY, marginTop: 2 }}>
+            {el.date_debut ? fill(L.scrutin_du, { a: court(el.date_debut), b: court(el.date_fin) }) : ""}
+            {pct != null && (etape === "scrutin" || close) ? ` · ${fill(L.turnout, { p: pct })}` : ""}
+          </div>
+          {actions.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              {actions.map((a) => <span key={a} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "#8A5A00", background: "#FFF3D6", borderRadius: 999, padding: "2px 8px" }}><AlertCircle size={11} /> {a}</span>)}
+            </div>
           )}
-          {maProcPortee?.statut === "validee" && (
-            <Bulletin el={el} titre={fill(L.ballot_for, { nom: nameOf(maProcPortee.mandant_id) })} postes={postes} valides={valides} emargements={emargements} pour={maProcPortee.mandant_id} mandant={maProcPortee.mandant_id} nameOf={nameOf} photoOf={photoOf} L={L} rpc={rpc} />
+        </div>
+        <Pill color={etapeColor}>{L[`etape_${etape}`]}</Pill>
+      </button>
+
+      {ouvert && (
+        <div style={{ padding: "4px 18px 18px", borderTop: "1px solid #EEF0F3" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+            {voix && <Btn variant="outline" style={smallBtn} onClick={() => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang })}><FileDown size={13} /> {L.pv_btn}</Btn>}
+            {isBureau && etape === "scrutin" && <Btn variant="outline" style={smallBtn} onClick={cloreMaintenant}><Lock size={13} /> {L.close_now_btn}</Btn>}
+            {isBureau && <button onClick={supprimer} style={linkDanger}><Trash2 size={11} /> {L.delete_btn}</button>}
+          </div>
+          {el.description && <p style={{ fontSize: 12.5, color: "#5B6270", margin: "6px 0 0" }}>{el.description}</p>}
+          <Stepper el={el} etape={etape} L={L} lang={lang} />
+          <p style={{ fontSize: 12, color: "#4A5468", margin: "0 0 12px" }}>{fill(L.params, { regles: regles.join(" · ") })}</p>
+
+          {el.proclame_le && (
+            <RuleBox>
+              {fill(L.proclaimed_on, { date: formatEventDateTime(el.proclame_le, lang), nom: el.proclame_par_nom || "—" })}
+              {etape === "recours" && <><br />{fill(L.recours_until, { date: formatEventDateTime(new Date(new Date(el.proclame_le).getTime() + (el.delai_recours_jours || 0) * 86400000).toISOString(), lang) })}</>}
+            </RuleBox>
           )}
-        </>
-      )}
 
-      {/* Résultats */}
-      {close && voix && (
-        <Resultats el={el} etape={etape} quorumKo={etat?.quorum_atteint === false} postes={postes} valides={valides} voix={voix} departages={departages} tirages={tirages} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} monRole={monRole} comiteComplet={comiteComplet} L={L} rpc={rpc} setInfo={setInfo} />
-      )}
+          {!["recours", "terminee"].includes(etape) && (
+            <div style={{ fontSize: 12.5, margin: "4px 0 6px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <UserCheck size={14} color={TEAL} /> <b>{L.my_situation} :</b>{" "}
+              {!myId ? L.not_linked : !moi ? "…" : moi.electeur ? fill(L.elig_no, { motif: L[`m_${moi.electeur}`] || moi.electeur }) : L.elig_ok}
+              {monRole && <Pill color={TEAL}>{L[`role_${monRole}`]}</Pill>}
+            </div>
+          )}
 
-      {/* Procès-verbal : signatures du comité et versement aux Documents */}
-      {el.proclame_le && voix && (monRole || isBureau || signatures.length > 0 || el.pv_verse_le) && (
-        <PvBlock el={el} comite={comite} signatures={signatures} myId={myId} monRole={monRole} isBureau={isBureau} nameOf={nameOf}
-          exporter={(sortie) => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang, sortie })}
-          L={L} t={t} lang={lang} rpc={rpc} reload={reload} setErrorMsg={setErrorMsg} setInfo={setInfo} />
+          {etape === "scrutin" && myId && (moi && !moi.electeur && maProcDonnee?.statut !== "validee" || maProcPortee?.statut === "validee") && (
+            <Volet titre={L.vote_section} Icon={Vote} alerte={actions.includes(L.act_vote)} defaultOpen>
+              {moi && !moi.electeur && maProcDonnee?.statut !== "validee" && (
+                <Bulletin el={el} titre={L.ballot_title} postes={postes} valides={valides} emargements={emargements} pour={myId} mandant={null} nameOf={nameOf} photoOf={photoOf} L={L} rpc={rpc} />
+              )}
+              {maProcPortee?.statut === "validee" && (
+                <Bulletin el={el} titre={fill(L.ballot_for, { nom: nameOf(maProcPortee.mandant_id) })} postes={postes} valides={valides} emargements={emargements} pour={maProcPortee.mandant_id} mandant={maProcPortee.mandant_id} nameOf={nameOf} photoOf={photoOf} L={L} rpc={rpc} />
+              )}
+            </Volet>
+          )}
+
+          {(etape === "scrutin" || close) && etat && (
+            <Volet titre={L.participation_title} Icon={Users2} badge={pct != null ? `${pct} %` : null} defaultOpen={etape === "scrutin"}>
+              <Participation etat={etat} etape={etape} hasVoix={!!voix} L={L} />
+            </Volet>
+          )}
+
+          {close && voix && (
+            <Volet titre={L.results_title} Icon={Gavel} alerte={actions.includes(L.act_proclaim)} defaultOpen>
+              <Resultats el={el} etape={etape} quorumKo={etat?.quorum_atteint === false} postes={postes} valides={valides} voix={voix} departages={departages} tirages={tirages} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} monRole={monRole} comiteComplet={comiteComplet} L={L} rpc={rpc} setInfo={setInfo} />
+            </Volet>
+          )}
+
+          {el.proclame_le && voix && (monRole || isBureau || signatures.length > 0 || el.pv_verse_le) && (
+            <Volet titre={L.pvb_title} Icon={FileSignature} badge={`${signatures.length} / ${comite.length}`} alerte={actions.includes(L.act_sign)} defaultOpen={!el.pv_verse_le && !!monRole}>
+              <PvBlock el={el} comite={comite} signatures={signatures} myId={myId} monRole={monRole} isBureau={isBureau} nameOf={nameOf}
+                exporter={(sortie) => exporterPvElection({ el, etat, cands, comite, departages, tirages, procurations, signatures, nameOf, association, L, lang, sortie })}
+                L={L} t={t} lang={lang} rpc={rpc} reload={reload} setErrorMsg={setErrorMsg} setInfo={setInfo} />
+            </Volet>
+          )}
+
+          <Volet titre={L.comite_title} Icon={ShieldCheck} badge={comiteComplet ? fill(L.badge_membres, { n: comite.length }) : L.badge_incomplet} alerte={actions.includes(L.act_comite)} defaultOpen={isBureau && avant && !comiteComplet}>
+            <ComiteBlock el={el} comite={comite} cands={cands} members={members} nameOf={nameOf} photoOf={photoOf} isBureau={isBureau} comiteComplet={comiteComplet} L={L} t={t} reload={reload} setErrorMsg={setErrorMsg} />
+          </Volet>
+
+          <Volet titre={L.cand_title} Icon={Vote} badge={fill(L.badge_cands, { n: cands.length }) + (candAttente ? ` · ${fill(L.badge_attente, { n: candAttente })}` : "")} alerte={avant && !!monRole && candAttente > 0} defaultOpen={avant && (etape === "candidatures" || (!!monRole && candAttente > 0))}>
+            <CandidaturesBlock el={el} etape={etape} avant={avant} cands={cands} postes={postes} eligib={eligib} members={members} nameOf={nameOf} photoOf={photoOf} myId={myId} moi={moi} monRole={monRole} isBureau={isBureau} L={L} t={t} rpc={rpc} reload={reload} setErrorMsg={setErrorMsg} />
+          </Volet>
+
+          {el.procurations_autorisees !== false && (avant || procurations.length > 0) && (
+            <Volet titre={L.proc_title} Icon={Handshake} badge={String(procurations.filter((x) => x.statut !== "annulee").length)} alerte={avant && !!monRole && procAttente > 0} defaultOpen={avant && !!monRole && procAttente > 0}>
+              <ProcurationsBlock el={el} avant={avant} procurations={procurations} eligib={eligib} members={members} nameOf={nameOf} myId={myId} moi={moi} monRole={monRole} maProcDonnee={maProcDonnee} maProcPortee={maProcPortee} L={L} rpc={rpc} />
+            </Volet>
+          )}
+        </div>
       )}
     </Card>
+  );
+}
+
+// Volet repliable d'une élection (titre, compteur, pastille « à faire »).
+function Volet({ titre, Icon, badge, alerte, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  return (
+    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, marginTop: 10, overflow: "hidden" }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", background: open ? "#F8FAFB" : "white", border: "none", cursor: "pointer", textAlign: "left", fontSize: 13, fontWeight: 700, color: "#1E2533" }}>
+        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        <Icon size={15} color={TEAL} />
+        <span style={{ flex: 1 }}>{titre}</span>
+        {alerte && <span title="!" style={{ width: 8, height: 8, borderRadius: "50%", background: "#E0A100" }} />}
+        {badge && <span style={{ fontSize: 11.5, fontWeight: 600, color: GREY }}>{badge}</span>}
+      </button>
+      {open && <div className="volet-body" style={{ padding: 12, borderTop: "1px solid #EEF0F3" }}>{children}</div>}
+    </div>
   );
 }
 
@@ -713,8 +815,8 @@ function ComiteBlock({ el, comite, cands, members, nameOf, photoOf, isBureau, co
   const ordre = [...comite].sort((a, b) => (a.role === "president" ? -1 : 0) - (b.role === "president" ? -1 : 0));
 
   return (
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><ShieldCheck size={15} color={TEAL} /> {L.comite_title}</div>
+    <div className="bloc-cadre" style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginBottom: 14 }}>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><ShieldCheck size={15} color={TEAL} /> {L.comite_title}</div>
       <p style={{ fontSize: 11.5, color: GREY, margin: "0 0 8px" }}>{L.comite_help}</p>
       {ordre.length === 0 && <p style={{ fontSize: 12, color: GREY, fontStyle: "italic", margin: "0 0 6px" }}>{L.comite_empty}</p>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
@@ -749,7 +851,7 @@ function Participation({ etat, etape, hasVoix, L }) {
   const pct = etat.inscrits > 0 ? Math.round((etat.votants / etat.inscrits) * 100) : 0;
   return (
     <div style={{ background: "#F8FAFB", borderRadius: 10, padding: 12, marginBottom: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Users2 size={15} color={TEAL} /> {L.participation_title}</div>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}><Users2 size={15} color={TEAL} /> {L.participation_title}</div>
       <div style={{ fontSize: 13 }}>
         {fill(L.participation_line, { v: etat.votants, i: etat.inscrits, pct })}
         {etat.votants_par_procuration > 0 && <> ({fill(L.procuration_line, { n: etat.votants_par_procuration })})</>}
@@ -807,7 +909,7 @@ function CandidaturesBlock({ el, etape, avant, cands, postes, eligib, members, n
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Vote size={15} color={TEAL} /> {L.cand_title}</div>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Vote size={15} color={TEAL} /> {L.cand_title}</div>
       {cands.length === 0 && <p style={{ fontSize: 12, color: GREY, fontStyle: "italic" }}>{L.cand_none}</p>}
       {postes.map((poste) => {
         const liste = cands.filter((c) => posteKey(c) === poste);
@@ -913,7 +1015,7 @@ function ProcurationsBlock({ el, avant, procurations, eligib, members, nameOf, m
 
   return (
     <div style={{ marginBottom: 14 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><Handshake size={15} color={TEAL} /> {L.proc_title}</div>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><Handshake size={15} color={TEAL} /> {L.proc_title}</div>
       <p style={{ fontSize: 11.5, color: GREY, margin: "0 0 8px" }}>{L.proc_help}</p>
       {procurations.filter((p) => p.statut !== "annulee").length === 0 && <p style={{ fontSize: 12, color: GREY, fontStyle: "italic", margin: "0 0 6px" }}>{L.proc_none}</p>}
       {procurations.filter((p) => p.statut !== "annulee").map((p) => (
@@ -1001,7 +1103,7 @@ function Resultats({ el, etape, quorumKo, postes, valides, voix, departages, tir
 
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Gavel size={15} color={TEAL} /> {L.results_title}</div>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}><Gavel size={15} color={TEAL} /> {L.results_title}</div>
       {quorumKo && <p style={{ fontSize: 12.5, fontWeight: 600, color: RED, background: "#FBE4E1", borderRadius: 8, padding: "8px 12px", margin: "0 0 10px" }}>{L.quorum_ko_result}</p>}
       {parPoste.map((r) => (
         <div key={r.poste || "_"} style={{ marginBottom: 14 }}>
@@ -1330,8 +1432,8 @@ function PvBlock({ el, comite, signatures, myId, monRole, isBureau, nameOf, expo
   }
 
   return (
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginTop: 12 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><FileSignature size={15} color={TEAL} /> {L.pvb_title}</div>
+    <div className="bloc-cadre" style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 12, marginTop: 12 }}>
+      <div className="bloc-titre" style={{ fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}><FileSignature size={15} color={TEAL} /> {L.pvb_title}</div>
       <p style={{ fontSize: 11.5, color: GREY, margin: "0 0 10px" }}>{L.pvb_help}</p>
       <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
         {ordre.map((c) => {
