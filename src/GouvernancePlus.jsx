@@ -58,7 +58,7 @@ const TXT = {
     org_vitrine: "Afficher aussi les responsables de rubriques sur la vitrine publique",
     org_vitrine_help: "Le bureau en fonction est déjà affiché sur la vitrine publique (si elle est activée).",
     org_vitrine_sql: "Option indisponible : exécutez d'abord sql/2026-10-10h_gouvernance_documents_ag.sql.",
-    rubriques: { inscription: "Inscription", tontine: "Cotisation", collation: "Collation", fonds_urgence: "Fonds d'urgence", fonds_secours: "Fonds de secours" },
+    rubriques: { inscription: "Inscription", tontine: "Cotisation", collation: "Présence", fonds_urgence: "Fonds d'urgence", fonds_secours: "Fonds de secours" },
     resp_label: "Responsable",
     sql: "Fonction indisponible : exécutez d'abord sql/2026-10-10h_gouvernance_documents_ag.sql dans Supabase.",
   },

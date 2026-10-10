@@ -2572,8 +2572,8 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   const [seances, setSeances] = useState([]);
   const [fuDepenses, setFuDepenses] = useState([]);
   const [fsDepenses, setFsDepenses] = useState([]);
-  const [fuRecouvrements, setFuRecouvrements] = useState([]);
-  const [fsRecouvrements, setFsRecouvrements] = useState([]);
+  const [fuRecouvrementsBruts, setFuRecouvrements] = useState([]);
+  const [fsRecouvrementsBruts, setFsRecouvrements] = useState([]);
   const [activityLog, setActivityLog] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementAcks, setAnnouncementAcks] = useState([]);
@@ -2703,6 +2703,24 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   const moneyF = (n) => money(n, devise);
   const depenseFondsMap = Object.fromEntries([...fuDepenses, ...fsDepenses].map((d) => [d.id, d.fonds]));
 
+  // ---------- Nouveaux adhérents et montants antérieurs (2026-10-10) ----------
+  // Réglage associations.nouveaux_payent_anterieur (Configuration →
+  // Adhésion & cotisations, sql/2026-10-10l) : par défaut (true) un nouvel
+  // adhérent doit tout depuis le début, comme avant. À false, il part sur
+  // les bases normales à sa date d'adhésion : pas de recouvrement pour une
+  // dépense antérieure, pas de séance de Présence antérieure.
+  const nouveauxPayentAnterieur = association?.nouveaux_payent_anterieur !== false;
+  const dateDepenseMap = Object.fromEntries([...fuDepenses, ...fsDepenses].map((d) => [d.id, d.date]));
+  const dateAdhesionDe = (memberId) => members.find((m) => m.id === memberId)?.date_adhesion || null;
+  const adhereAvant = (memberId, dateIso) => {
+    if (nouveauxPayentAnterieur) return true;
+    const da = dateAdhesionDe(memberId);
+    return !da || !dateIso || String(da).slice(0, 10) <= String(dateIso).slice(0, 10);
+  };
+  // Une quote-part déjà payée reste comptée (l'argent a été reçu).
+  const fuRecouvrements = fuRecouvrementsBruts.filter((r) => r.paye || adhereAvant(r.member_id, dateDepenseMap[r.depense_id]));
+  const fsRecouvrements = fsRecouvrementsBruts.filter((r) => r.paye || adhereAvant(r.member_id, dateDepenseMap[r.depense_id]));
+
   // ---------- Fréquence des réunions (Cotisation/Collation) ----------
   // Par défaut "mois" (12 séances/an) : comportement historique inchangé pour toute
   // association qui n'a pas explicitement choisi une autre fréquence.
@@ -2721,7 +2739,19 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // Le montant configuré est "par séance" — le dû total suit donc le nombre de séances
   // suivies (12 par défaut en mensuel, sinon selon la fréquence choisie), exactement comme
   // pour la Cotisation.
-  function collationDu() { return periodKeys.length * COLLATION_MENSUEL; }
+  function premierePeriodeDue(memberId) {
+    if (nouveauxPayentAnterieur) return 0;
+    const j = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(dateAdhesionDe(memberId) || ""));
+    if (!j) return 0;
+    const da = new Date(+j[1], +j[2] - 1, +j[3]);
+    const annee = new Date().getFullYear();
+    if (da.getFullYear() < annee) return 0;
+    if (da.getFullYear() > annee) return periodKeys.length;
+    if (frequenceReunions === "mois") return da.getMonth();
+    const jour = Math.floor((da - new Date(annee, 0, 1)) / 86400000);
+    return Math.min(periodKeys.length, Math.floor(jour / (365 / periodKeys.length)));
+  }
+  function collationDu(memberId) { return (periodKeys.length - premierePeriodeDue(memberId)) * COLLATION_MENSUEL; }
   const collationTotalDu = members.reduce((s, m) => s + collationDu(m.id), 0);
   const collationTotalPaye = members.reduce((s, m) => s + collationTotalMois(m.id), 0);
 
@@ -2747,7 +2777,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // l'Edge Function create-checkout-session (suite 48-49), réutilisée ici
   // côté client pour la confirmation des virements Interac (suite 49).
   function nextUnpaidSeance(memberId) { return SEANCES.find((s) => tontineMontant(memberId, s) <= 0) ?? null; }
-  function nextUnpaidMois(memberId) { return periodKeys.find((mo) => collationMontant(memberId, mo) <= 0) ?? null; }
+  function nextUnpaidMois(memberId) { return periodKeys.slice(premierePeriodeDue(memberId)).find((mo) => collationMontant(memberId, mo) <= 0) ?? null; }
   const tontineSeances = seances.filter((s) => (s.type || "tontine") === "tontine");
   const collationSeances = seances.filter((s) => s.type === "collation");
 
@@ -3020,7 +3050,8 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     // période de probation renseignée pour l'association, le recouvrement
     // s'applique dès que le fonds de secours est payé (comportement par
     // défaut). Le fonds d'urgence n'est pas concerné par cette règle.
-    const beneficiaires = fonds === "secours" ? activeMembers.filter((m) => estEligibleRecouvrementSecours(m, association)) : activeMembers;
+    const beneficiaires = (fonds === "secours" ? activeMembers.filter((m) => estEligibleRecouvrementSecours(m, association)) : activeMembers)
+      .filter((m) => adhereAvant(m.id, draft.date));
     const montant = Number(draft.montant);
     const quotePart = beneficiaires.length > 0 ? montant / beneficiaires.length : 0;
     if (!window.confirm(t("fonds_confirm_register").replace("{montant}", moneyF(montant)).replace("{n}", String(beneficiaires.length)))) return;
@@ -3080,7 +3111,8 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     const dep = depenses.find((d) => d.id === depenseId);
     if (!dep) return;
     const montant = patch.montant != null ? Number(patch.montant) : Number(dep.montant);
-    const beneficiaires = fonds === "secours" ? activeMembers.filter((m) => estEligibleRecouvrementSecours(m, association)) : activeMembers;
+    const beneficiaires = (fonds === "secours" ? activeMembers.filter((m) => estEligibleRecouvrementSecours(m, association)) : activeMembers)
+      .filter((m) => adhereAvant(m.id, patch.date || dep.date));
     const quotePart = beneficiaires.length > 0 ? Math.round((montant / beneficiaires.length) * 100) / 100 : 0;
     const existantParMembre = {};
     recouvrements.filter((r) => r.depense_id === depenseId).forEach((r) => { existantParMembre[r.member_id] = r; });
@@ -4953,8 +4985,8 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
                   return (
                     <tr key={m.id}>
                       <td style={{ ...td, fontWeight: 600, color: "var(--primary)", position: "sticky", left: 0, background: "white" }}>{m.nom}</td>
-                      {periodKeys.map((mo) => (
-                        <td key={mo} style={{ ...td, textAlign: "center" }}>
+                      {periodKeys.map((mo, iMo) => (
+                        <td key={mo} style={{ ...td, textAlign: "center", ...(iMo < premierePeriodeDue(m.id) ? { background: "#F1F2F4", opacity: 0.55 } : {}) }} title={iMo < premierePeriodeDue(m.id) ? t("presence_avant_adhesion") : undefined}>
                           <input type="number" disabled={!canEditRubrique("collation")} defaultValue={collationMontant(m.id, mo) || ""} placeholder="0" onBlur={(e) => saveCollationMontant(m.id, mo, Number(e.target.value) || 0)} style={{ ...inputStyle, width: 55, padding: "3px 4px", fontSize: 11, textAlign: "center" }} />
                         </td>
                       ))}
@@ -5958,6 +5990,16 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
               </select>
             </Field>
             <p style={{ fontSize: 11, color: "#686F7D", marginTop: -8, marginBottom: 14 }}>{t("cfg_frequence_help")}</p>
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, fontWeight: 600, color: "var(--primary)", marginBottom: 4, cursor: "pointer" }}>
+              <input type="checkbox" style={{ marginTop: 3 }} checked={association?.nouveaux_payent_anterieur !== false} onChange={async (e) => {
+                const v = e.target.checked;
+                const { data, error } = await supabase.from("associations").update({ nouveaux_payent_anterieur: v }).eq("id", profile.association_id).select().single();
+                if (error) { alert(error.code === "PGRST204" || /nouveaux_payent_anterieur/.test(error.message || "") ? t("cfg_anterieur_sql") : friendlyError(error, t)); return; }
+                onAssociationChange(data);
+              }} />
+              {t("cfg_anterieur_label")}
+            </label>
+            <p style={{ fontSize: 11, color: "#686F7D", marginTop: 0, marginBottom: 14 }}>{t("cfg_anterieur_help")}</p>
             <Field label={t("cfg_interac_email_label")}>
               <input type="email" style={inputStyle} value={brandDraft.interac_email || ""} onChange={(e) => setBrandDraft({ ...brandDraft, interac_email: e.target.value })} placeholder="paiements@monassociation.org" />
             </Field>
@@ -7604,7 +7646,7 @@ function MemberHistoryModal({ memberId, onClose, t, lang, members, moneyF, depen
         disponible_benevolat: "Bénévolat", nom: "Nom",
         motif_desactivation: "Motif", date_desactivation: "Date de désactivation",
         photo_url: "Photo", inscription_paye: "Inscription payée", inscription_date: "Date d'inscription",
-        collation_montant_paye: "Collation payée", fonds_urgence_paye: "Fonds urgence payé",
+        collation_montant_paye: "Présence payée", fonds_urgence_paye: "Fonds urgence payé",
         fonds_secours_paye: "Fonds secours payé", fonds_urgence_date_paiement: "Date de paiement (Fonds urgence)",
         fonds_secours_date_paiement: "Date de paiement (Fonds secours)", bio: "Bio",
       };

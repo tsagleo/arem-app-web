@@ -354,7 +354,7 @@ Deno.serve(async (req: Request) => {
           ? {
               ok: true,
               montantDu: montantPeriode,
-              nom: `Collation — ${prochaine} — ${association.nom}`,
+              nom: `Présence — ${prochaine} — ${association.nom}`,
               description: `${prochaine} : ${montantPeriode.toFixed(2)} $ (frais de transaction inclus)`,
               metadata: {
                 type: "collation",

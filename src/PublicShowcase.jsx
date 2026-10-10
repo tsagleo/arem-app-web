@@ -258,7 +258,7 @@ function ShowcasePage({ slug }) {
                   {r.photo_url ? <img src={r.photo_url} alt="" style={{ width: 44, height: 44, borderRadius: "50%", objectFit: "cover", margin: "0 auto 6px" }} />
                     : <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#E4F2EE", color: "#1F8A5C", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, margin: "0 auto 6px" }}>{(r.nom || "?").trim().split(/\s+/).map((x) => x[0]).slice(0, 2).join("").toUpperCase()}</div>}
                   <div style={{ fontSize: 13, fontWeight: 700 }}>{r.nom}</div>
-                  <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{({ inscription: lang === "en" ? "Registration" : "Inscription", tontine: lang === "en" ? "Contributions" : "Cotisation", collation: lang === "en" ? "Refreshments" : "Collation", fonds_urgence: lang === "en" ? "Emergency fund" : "Fonds d'urgence", fonds_secours: lang === "en" ? "Relief fund" : "Fonds de secours" })[r.rubrique] || r.rubrique || ""}</div>
+                  <div style={{ fontSize: 11.5, color: "#9AA2B5" }}>{({ inscription: lang === "en" ? "Registration" : "Inscription", tontine: lang === "en" ? "Contributions" : "Cotisation", collation: lang === "en" ? "Attendance" : "Présence", fonds_urgence: lang === "en" ? "Emergency fund" : "Fonds d'urgence", fonds_secours: lang === "en" ? "Relief fund" : "Fonds de secours" })[r.rubrique] || r.rubrique || ""}</div>
                 </Card>
               ))}
             </div>
