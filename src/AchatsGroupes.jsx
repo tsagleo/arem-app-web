@@ -29,6 +29,9 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
+import { FriseAchat, SondagePanel, DevisPanel, CreneauxPanel, SuiviPanel, AvisPanel, NoteFournisseur, FacturePanel, LimitePaiementPanel, PayerCarte, RemiseVisuelle } from "./AchatsPlus.jsx";
+import { TXT_ACHATS_PLUS } from "./achatsTextes";
+import { bip } from "./achatsOutils";
 import {
   Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, money,
   formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED,
@@ -444,7 +447,7 @@ const TXT = {
 };
 
 const STATUT_COULEUR = {
-  propose: [AMBER, AMBER_LIGHT], refuse: [MUTED, "#EEF0F3"], ouvert: [TEAL, TEAL_LIGHT],
+  sondage: ["#6B3FA0", "#F0E8FA"], propose: [AMBER, AMBER_LIGHT], refuse: [MUTED, "#EEF0F3"], ouvert: [TEAL, TEAL_LIGHT],
   confirme: ["#1F5FA8", "#E3EEFA"], commande: ["#1F5FA8", "#E3EEFA"], livre: ["#6B3FA0", "#F0E8FA"],
   cloture: [MUTED, "#EEF0F3"], annule: [RED, "#FBE4E1"],
 };
@@ -625,13 +628,13 @@ const ligneBtns = { display: "flex", gap: 8, flexWrap: "wrap", alignItems: "cent
 const petitBtn = { padding: "5px 11px", fontSize: 12 };
 
 // ---------- Formulaire de proposition / modification ----------
-function AchatForm({ L, t, isBureau, members, initial, profile, onClose, onSaved }) {
+function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, onSaved }) {
   const [f, setF] = useState(() => ({
     titre: initial?.titre || "", description: initial?.description || "", photo_url: initial?.photo_url || "",
     fournisseur: initial?.fournisseur || "", unite: initial?.unite || "piece",
     prix_unitaire: initial?.prix_unitaire ?? "", prix_detail: initial?.prix_detail ?? "", frais_estimes: initial?.frais_estimes ?? "",
     seuil_min: initial?.seuil_min ?? "", stock_max: initial?.stock_max ?? "", mode_repartition: initial?.mode_repartition || "premier_arrive",
-    date_limite: initial?.date_limite ? toDatetimeLocal(initial.date_limite) : "",
+    date_limite: initial?.date_limite && !copie ? toDatetimeLocal(initial.date_limite) : "",
     perissable: !!initial?.perissable, chaine_froid: !!initial?.chaine_froid,
     porteur_member_id: initial?.porteur_member_id || "",
   }));
@@ -653,7 +656,7 @@ function AchatForm({ L, t, isBureau, members, initial, profile, onClose, onSaved
       photoUrl = supabase.storage.from("achats-photos").getPublicUrl(path).data.publicUrl;
     }
     const p = { ...f, photo_url: photoUrl, date_limite: datetimeLocalToISO(f.date_limite) };
-    const { error } = initial
+    const { error } = initial && !copie
       ? await supabase.rpc("achats_modifier", { p_id: initial.id, p })
       : await supabase.rpc("achats_proposer", { p });
     setBusy(false);
@@ -856,6 +859,7 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
       )}
       {peutPayer && (
         <div style={{ ...ligneBtns, marginTop: 12 }}>
+          <PayerCarte L={L} t={t} a={a} />
           <Btn onClick={() => { setShowInterac((v) => !v); setMontant(String(reste)); }}><Upload size={14} /> {L.pay_interac}</Btn>
           {avoir > 0 && (
             <Btn variant="outline" onClick={() => {
@@ -900,6 +904,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
   const [noteCommande, setNoteCommande] = useState("");
   const [bilan, setBilan] = useState({ cout: a.cout_reel_produits ?? "", frais: a.frais_communs_reels ?? "", note: a.note_bilan || "" });
   const [accord, setAccord] = useState("");
+  const [relance, setRelance] = useState(false);
+  const [procuration, setProcuration] = useState("");
+  const [pleinEcran, setPleinEcran] = useState(false);
 
   const u = uniteDe(L, a);
   const myMemberId = profile.member_id;
@@ -948,14 +955,20 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
   }
 
   async function remettre(args) {
-    const res = await action("achats_remettre", { p_id: a.id, p_token: null, p_sous: null, ...args });
+    // achats_remettre_plus (sql/2026-10-10p) : procuration + photo ; repli
+    // sur l'ancienne fonction tant que le script n'est pas exécuté.
+    let { data: res, error } = await supabase.rpc("achats_remettre_plus", { p_id: a.id, p_token: null, p_sous: null, p_procuration: procuration.trim() || null, ...args });
+    if (error && (error.code === "PGRST202" || error.code === "42883")) ({ data: res, error } = await supabase.rpc("achats_remettre", { p_id: a.id, p_token: null, p_sous: null, ...args }));
+    if (error) { setRemise({ tone: "warn", text: errTxt(error, t) }); bip(false); return; }
+    onReload();
     if (!res) return;
+    const vu = (x) => ({ ...x, photo_url: res.photo_url, proxy: res.remis_a_nom });
+    if (res.ok && !res.deja_remis) { bip(true); setProcuration(""); }
+    else if (!res.ok) bip(false);
     if (!res.ok) setRemise({ tone: "warn", text: res.raison === "carte_inconnue" ? L.unknown_card : L.no_share });
-    // Même carte relue juste après la remise (le membre garde son QR devant la
-    // caméra) : on garde la confirmation au lieu d'afficher « Déjà remis ».
-    else if (res.deja_remis && Date.now() - new Date(res.remis_le).getTime() < 120000) setRemise({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) });
-    else if (res.deja_remis) setRemise({ tone: "warn", text: `${res.member_nom} — ${fill(L.handover_again, { date: formatEventDateTime(res.remis_le, lang), nom: res.remis_par_nom || "" })}` });
-    else setRemise({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) });
+    else if (res.deja_remis && Date.now() - new Date(res.remis_le).getTime() < 120000) setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) }));
+    else if (res.deja_remis) setRemise(vu({ tone: "warn", text: `${res.member_nom} — ${fill(L.handover_again, { date: formatEventDateTime(res.remis_le, lang), nom: res.remis_par_nom || "" })}` }));
+    else setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) }));
   }
 
   // Aperçu du bilan (même calcul que achats_valider_bilan)
@@ -1002,6 +1015,12 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
   if (edition) {
     return <AchatForm L={L} t={t} isBureau={isBureau} members={members} initial={a} profile={profile} onClose={() => setEdition(false)} onSaved={() => { setEdition(false); onReload(); }} />;
   }
+  if (relance) {
+    return <AchatForm L={L} t={t} isBureau={isBureau} members={members} initial={a} copie profile={profile} onClose={() => setRelance(false)} onSaved={() => { setRelance(false); onBack(); onReload(); }} />;
+  }
+  // Pour la frise : parts impayées et reste à payer du membre connecté.
+  const sousFrise = sous.map((s) => ({ ...s, impaye: s.statut === "retenu" && ligneSous(s).solde + ligneSous(s).attente < 0 }));
+  const monReste = maSous?.statut === "retenu" ? Math.max(0, r2(-(ligneSous(maSous).solde + ligneSous(maSous).attente))) : 0;
 
   return (
     <div>
@@ -1022,7 +1041,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
             {["ouvert", "confirme", "commande", "propose"].includes(a.statut) && <Progression L={L} a={a} />}
             <div style={{ fontSize: 12.5, color: MUTED, display: "flex", flexDirection: "column", gap: 2 }}>
               <span>{fill(L.deadline, { date: formatEventDateTime(a.date_limite, lang) })}</span>
-              {a.fournisseur && <span>{fill(L.supplier, { f: a.fournisseur })}</span>}
+              {a.fournisseur && <span>{fill(L.supplier, { f: a.fournisseur })} <NoteFournisseur L={L} fournisseur={a.fournisseur} /></span>}
               {a.porteur_nom && <span>{fill(L.carrier, { nom: a.porteur_nom })}</span>}
               {Number(a.frais_estimes) > 0 && <span>{fill(L.est_fees, { m: money(a.frais_estimes, devise) })}</span>}
               {a.stock_max && <span>{fill(L.stock, { n: fmtQ(a.stock_max), u })} · {L[`m_${a.mode_repartition}`]}</span>}
@@ -1035,7 +1054,15 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
         </div>
       </Card>
 
+      <FriseAchat L={L} a={a} maSous={maSous} sous={sousFrise} mouvements={mouvements} gestionnaire={gestionnaire} isBureau={isBureau} profile={profile} devise={devise} aPayer={monReste} />
+      {gestionnaire && ["cloture", "annule", "commande", "livre"].includes(a.statut) && (
+        <div style={{ marginBottom: 14 }}><Btn variant="outline" style={petitBtn} onClick={() => setRelance(true)} title={L.relaunch_help}>🔁 {L.relaunch}</Btn></div>
+      )}
+
       <Message msg={msg} />
+
+      <SondagePanel L={L} t={t} a={a} u={u} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} aucuneSouscription={sousActives.length === 0} onReload={onReload} />
+      <DevisPanel L={L} t={t} a={a} u={u} devise={devise} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} onReload={onReload} />
 
       {/* Souscription du membre */}
       {ouvert && myMemberId && (
@@ -1075,6 +1102,11 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
         <MaPart L={L} t={t} a={a} s={maSous} mouvements={mouvements} devise={devise} profile={profile} association={association} onReload={onReload}
           onAction={(fn, args, c) => action(fn, args, c)} />
       )}
+
+      <CreneauxPanel L={L} t={t} lang={lang} a={a} gestionnaire={gestionnaire} maSous={maSous} sous={sous} onReload={onReload} />
+      <SuiviPanel L={L} t={t} lang={lang} a={a} gestionnaire={gestionnaire} onReload={onReload} />
+      <AvisPanel L={L} t={t} a={a} maSous={maSous} onReload={onReload} />
+      {!gestionnaire && <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire={false} onReload={onReload} />}
 
       {/* Gestion (bureau ou porteur) */}
       {gestionnaire && (
@@ -1144,14 +1176,20 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
             </div>
           )}
 
+          <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire onReload={onReload} />
+
           {/* Remise */}
           {["livre", "cloture"].includes(a.statut) && (
-            <div style={{ marginTop: 16 }}>
+            <div style={pleinEcran ? { position: "fixed", inset: 0, zIndex: 1000, background: "white", padding: 20, overflowY: "auto" } : { marginTop: 16 }}>
               <h4 style={{ margin: "0 0 6px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><PackageCheck size={15} /> {L.handover_title}
                 <span style={{ fontWeight: 400, color: MUTED, fontSize: 12.5 }}>— {fill(L.handed_count, { n: retenus.filter((s) => s.remis_le).length, t: retenus.length })}</span></h4>
-              <Btn variant={scan ? "outline" : "primary"} style={petitBtn} onClick={() => { setScan((v) => !v); setRemise(null); }}><QrCode size={13} /> {scan ? L.scan_stop : L.scan_start}</Btn>
+              <div style={{ ...ligneBtns, marginBottom: 8 }}>
+                <Btn variant={scan ? "outline" : "primary"} style={petitBtn} onClick={() => { setScan((v) => !v); setRemise(null); }}><QrCode size={13} /> {scan ? L.scan_stop : L.scan_start}</Btn>
+                <Btn variant="outline" style={petitBtn} onClick={() => setPleinEcran((v) => !v)}>{pleinEcran ? L.rm_exit : `⛶ ${L.rm_full}`}</Btn>
+              </div>
+              <div style={{ maxWidth: 340 }}><Field label={L.rm_proxy}><input style={inputStyle} placeholder={L.rm_proxy_ph} value={procuration} onChange={(e) => setProcuration(e.target.value)} /></Field></div>
               <QrScanner active={scan} L={L} onDecode={(token) => remettre({ p_token: token })} />
-              {remise && <div style={{ fontSize: 16, fontWeight: 700 }}><Message msg={remise} /></div>}
+              <RemiseVisuelle L={L} remise={remise} />
             </div>
           )}
 
@@ -1171,7 +1209,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
                     <td style={{ ...td, fontWeight: 700, color: l.solde < 0 ? RED : l.solde > 0 ? AMBER : TEAL }}>{money(l.solde, devise)}</td>
                     <td style={td}>{L[`s_${s.statut}`]}</td>
-                    <td style={td}>{s.remis_le ? fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") }) : "—"}</td>
+                    <td style={td}>{s.remis_le ? fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") }) + (s.remis_a_nom ? ` (${fill(L.rm_by_proxy, { nom: s.remis_a_nom })})` : "") : "—"}</td>
                     <td style={td}>
                       <div style={ligneBtns}>
                         {s.statut === "retenu" && l.solde + l.attente < 0 && a.statut !== "annule" && (
@@ -1207,6 +1245,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
           {["commande", "livre", "cloture"].includes(a.statut) && (
             <div style={{ marginTop: 18 }}>
               <h4 style={{ margin: "0 0 8px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><BarChart3 size={15} /> {L.bilan_title}</h4>
+              <FacturePanel L={L} t={t} a={a} gestionnaire={gestionnaire} profile={profile} onReload={onReload} />
               {a.statut === "cloture" ? (
                 <p style={{ fontSize: 13.5 }}>
                   {fill(L.bilan_entered, { date: formatEventDateTime(a.bilan_saisi_le, lang), p: money(a.cout_reel_produits, devise), f: money(a.frais_communs_reels, devise), t: money(totalReel, devise) })}<br />
@@ -1415,7 +1454,7 @@ function BilanAnnuel({ L, t, achats, sous, devise, association, onReload }) {
 // =====================================================================
 export default function AchatsGroupes({ profile, isBureau, association }) {
   const { t, lang } = useLang();
-  const L = TXT[lang === "en" ? "en" : "fr"];
+  const L = { ...TXT[lang === "en" ? "en" : "fr"], ...TXT_ACHATS_PLUS[lang === "en" ? "en" : "fr"] };
   const devise = association?.devise_monetaire || "CAD";
   const [achats, setAchats] = useState([]);
   const [sous, setSous] = useState([]);

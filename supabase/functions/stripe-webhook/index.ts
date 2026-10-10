@@ -311,6 +311,24 @@ Deno.serve(async (req: Request) => {
           // (reference) where methode='stripe' — voir logTransaction.
           await logTransaction("amende", Number(sanction.montant), null, null, metadata.sanction_id);
         }
+      } else if (metadata.type === "achat_groupe" && metadata.achat_id) {
+        // 2026-10-10 : part d'achat groupé payée par carte. Enregistrée « reçue »
+        // (Stripe a encaissé) ; un membre du bureau la valide ensuite, comme
+        // tout mouvement de la coopérative. Idempotent : index unique sur la
+        // référence Stripe.
+        const { data: achat } = await supabaseAdmin.from("achats_groupes").select("id, statut").eq("id", metadata.achat_id).maybeSingle();
+        const { data: sous } = await supabaseAdmin.from("achats_souscriptions").select("member_nom").eq("achat_id", metadata.achat_id).eq("member_id", memberId).maybeSingle();
+        if (!achat) {
+          console.error("Achat groupé introuvable pour ce paiement :", metadata.achat_id);
+        } else {
+          const { error } = await supabaseAdmin.from("achats_mouvements").insert({
+            association_id: member.association_id, achat_id: achat.id, member_id: memberId, member_nom: sous?.member_nom ?? null,
+            sens: "entree", objet: achat.statut === "cloture" ? "complement" : "part", mode: "stripe",
+            montant: Number(metadata.montant), reference: session.id, statut: "recu",
+            recu_par_nom: "Stripe (paiement par carte)", recu_le: new Date().toISOString(), note: "Payé par carte en ligne",
+          });
+          if (error && error.code !== "23505") console.error("Échec d'enregistrement du paiement d'achat groupé :", error);
+        }
       } else {
         console.error("Type de paiement inconnu ou métadonnée manquante :", metadata);
       }

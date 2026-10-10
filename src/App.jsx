@@ -43,6 +43,8 @@ const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
 const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
 import { CompteNonRelieBanner, AideDemandeAdhesion } from "./LiaisonCompte.jsx";
 import MesEngagements from "./MesEngagements.jsx";
+import { DoublonsMembres } from "./AchatsPlus.jsx";
+import { TXT_ACHATS_PLUS } from "./achatsTextes";
 import { txtEvPlus, finValiditeBadge, downloadMemberBadgesPdf } from "./evenementsPlus";
 import { mentionsLegales } from "./pdfOfficiel";
 import ParametresBadges from "./ParametresBadges.jsx";
@@ -4713,6 +4715,8 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
    {tab === "membres" && isBureau && (
         <Container><Section>
           <h2 style={{ marginBottom: 20 }}>{t("mem_title")}</h2>
+          {/* Fiches en double : détection et fusion (sql/2026-10-10p) */}
+          <DoublonsMembres L={TXT_ACHATS_PLUS[lang === "en" ? "en" : "fr"]} t={t} lang={lang} onMerged={rafraichirApresAcces} />
 
           <Card style={{ marginBottom: 22 }}>
             <h3 style={{ fontSize: 14, marginBottom: 14 }}>{t("mem_add_title")}</h3>

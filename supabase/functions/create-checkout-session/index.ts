@@ -511,6 +511,37 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
+    } else if (type === "achat_groupe") {
+      // 2026-10-10 : part d'un achat groupé payée par carte. Le reste à payer
+      // est calculé côté serveur (achats_solde, paiements en cours déduits),
+      // jamais fourni par l'écran.
+      const achatId = typeof body.achat_id === "string" ? body.achat_id : null;
+      const { data: achat } = achatId
+        ? await supabase.from("achats_groupes").select("id, titre, statut, association_id").eq("id", achatId).eq("association_id", member.association_id).maybeSingle()
+        : { data: null };
+      const { data: sous } = achat
+        ? await supabase.from("achats_souscriptions").select("id, statut").eq("achat_id", achat.id).eq("member_id", member.id).maybeSingle()
+        : { data: null };
+      if (!achat || !sous || sous.statut !== "retenu") {
+        plan = { ok: false, error: "Vous n'avez pas de part à payer pour cet achat.", status: 400 };
+      } else if (!["confirme", "commande", "livre", "cloture"].includes(achat.statut)) {
+        plan = { ok: false, error: "Le paiement n'est pas encore ouvert.", status: 400 };
+      } else {
+        const { data: solde } = await supabase.rpc("achats_solde", { p_achat: achat.id, p_member: member.id });
+        const { data: enCours } = await supabase.from("achats_mouvements").select("montant")
+          .eq("achat_id", achat.id).eq("member_id", member.id).eq("sens", "entree").in("statut", ["declare", "recu"]);
+        const attente = (enCours ?? []).reduce((s, m) => s + Number(m.montant || 0), 0);
+        const montantDu = Math.round((-Number(solde ?? 0) - attente) * 100) / 100;
+        plan = montantDu > 0
+          ? {
+              ok: true,
+              montantDu,
+              nom: `Achat groupé — ${achat.titre} — ${association.nom}`,
+              description: `Votre part : ${montantDu.toFixed(2)} $ (frais de transaction inclus)`,
+              metadata: { type: "achat_groupe", member_id: member.id, association_id: association.id, achat_id: achat.id, montant: montantDu.toFixed(2) },
+            }
+          : { ok: false, error: "Votre part est déjà réglée (ou un paiement est en cours de vérification).", status: 400 };
+      }
     } else {
       plan = { ok: false, error: "Type de paiement inconnu.", status: 400 };
     }
