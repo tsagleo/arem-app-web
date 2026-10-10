@@ -3,6 +3,7 @@
 export const TXT_ACHATS_PLUS = {
   fr: {
     st_sondage: "Sondage d'intérêt",
+    controle_only: "Vous n'êtes pas le porteur de cet achat ({nom}) : vous pouvez tout consulter et valider les paiements et le bilan (double contrôle), mais seul le porteur peut le modifier ou le faire avancer.",
     f_sec1: "1. Le produit ou service", f_sec2: "2. Prix et quantités", f_sec3: "3. Organisation",
     f_sondage: "Commencer par un sondage d'intérêt (sans engagement)", f_sondage_help: "Les membres indiquent d'abord la quantité qui les intéresse ; vous comparez les devis, puis vous ouvrez les souscriptions.",
     submit_sondage: "Lancer le sondage",
@@ -69,6 +70,7 @@ export const TXT_ACHATS_PLUS = {
   },
   en: {
     st_sondage: "Interest poll",
+    controle_only: "You are not the carrier of this purchase ({nom}): you can see everything and validate payments and the report (double control), but only the carrier can change it or move it forward.",
     f_sec1: "1. Product or service", f_sec2: "2. Price and quantities", f_sec3: "3. Organisation",
     f_sondage: "Start with an interest poll (no commitment)", f_sondage_help: "Members first indicate the quantity they want; you compare quotes, then open subscriptions.",
     submit_sondage: "Start the poll",

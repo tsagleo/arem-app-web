@@ -141,7 +141,7 @@ export function SondagePanel({ L, t, a, u, isBureau, gestionnaire, profile, aucu
 // =====================================================================
 // Devis comparés
 // =====================================================================
-export function DevisPanel({ L, t, a, u, devise, isBureau, gestionnaire, profile, onReload }) {
+export function DevisPanel({ L, t, a, u, devise, isBureau, gestionnaire, profile, aucuneSouscription, onReload }) {
   const [devis, setDevis] = useState([]);
   const [votes, setVotes] = useState([]);
   const [f, setF] = useState(null);
@@ -154,7 +154,8 @@ export function DevisPanel({ L, t, a, u, devise, isBureau, gestionnaire, profile
   }, [a.id]);
   const [busy, rpc] = useRpc(t, () => { charger(); onReload(); });
   useEffect(() => { charger(); }, [charger]);
-  const modifiable = ["sondage", "propose", "ouvert"].includes(a.statut);
+  // Devis figés dès qu'un membre a souscrit (sql/2026-10-10r).
+  const modifiable = ["sondage", "propose"].includes(a.statut) || (a.statut === "ouvert" && aucuneSouscription);
   if (!modifiable && devis.length === 0) return null;
   if (!gestionnaire && devis.length === 0) return null;
   const monVote = votes.find((v) => v.member_id === profile.member_id)?.devis_id;
@@ -481,7 +482,8 @@ export function AccesPanel({ L, t, lang, a, isBureau, gestionnaire, profile, auc
   const accepte = !!mien?.accepte;
   useEffect(() => { onAcces?.(!restreint || accepte, mien?.accepte ? Number(mien.quantite) : null); }, [restreint, accepte, mien, onAcces]);
   if (a.statut !== "ouvert") return null;
-  const demandes = interets.filter((x) => x.tardif && !x.accepte);
+  // Personne ne statue sur sa propre demande.
+  const demandes = interets.filter((x) => x.tardif && !x.accepte && x.member_id !== profile.member_id);
   if (!restreint && !isBureau) return null;
   return (
     <Card style={{ marginBottom: 16, borderTopColor: restreint ? "#6B3FA0" : TEAL }}>

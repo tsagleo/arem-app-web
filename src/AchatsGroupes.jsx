@@ -934,7 +934,13 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
 
   const u = uniteDe(L, a);
   const myMemberId = profile.member_id;
-  const gestionnaire = isBureau || (!!myMemberId && a.porteur_member_id === myMemberId);
+  // 2026-10-10 (demandé par l'utilisateur) : seul le PORTEUR pilote l'achat
+  // (à défaut de porteur : son auteur ou le/la président(e)). Les autres
+  // membres du bureau CONTRÔLENT : ils voient tout et valident paiements,
+  // bilan et propositions (sql/2026-10-10r_achats_droits_porteur.sql).
+  const gestionnaire = a.porteur_member_id
+    ? !!myMemberId && a.porteur_member_id === myMemberId
+    : a.propose_par === profile.id || profile.role === "bureau_president";
   const maSous = sous.find((s) => s.member_id === myMemberId);
   const sousActives = sous.filter((s) => s.statut !== "retire");
   const retenus = sous.filter((s) => s.statut === "retenu");
@@ -1079,16 +1085,16 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       </Card>
 
       <FriseAchat L={L} a={a} maSous={maSous} sous={sousFrise} mouvements={mouvements} gestionnaire={gestionnaire} isBureau={isBureau} profile={profile} devise={devise} aPayer={monReste} />
-      {gestionnaire && ["cloture", "annule", "commande", "livre"].includes(a.statut) && (
+      {(gestionnaire || isBureau) && ["cloture", "annule", "commande", "livre"].includes(a.statut) && (
         <div style={{ marginBottom: 14 }}><Btn variant="outline" style={petitBtn} onClick={() => setRelance(true)} title={L.relaunch_help}>🔁 {L.relaunch}</Btn></div>
       )}
 
       <Message msg={msg} />
 
-      <SondagePanel L={L} t={t} a={a} u={u} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} aucuneSouscription={sousActives.length === 0} onReload={onReload} />
-      <DevisPanel L={L} t={t} a={a} u={u} devise={devise} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} onReload={onReload} />
+      <SondagePanel L={L} t={t} a={a} u={u} isBureau={gestionnaire} gestionnaire={gestionnaire} profile={profile} aucuneSouscription={sousActives.length === 0} onReload={onReload} />
+      <DevisPanel L={L} t={t} a={a} u={u} devise={devise} isBureau={gestionnaire} gestionnaire={gestionnaire} profile={profile} aucuneSouscription={sousActives.length === 0} onReload={onReload} />
 
-      <AccesPanel L={L} t={t} lang={lang} a={a} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} aucunInscrit={!sous.some((s) => s.statut === "inscrit")} onAcces={onAcces} onReload={onReload} />
+      <AccesPanel L={L} t={t} lang={lang} a={a} isBureau={gestionnaire} gestionnaire={gestionnaire} profile={profile} aucunInscrit={!sous.some((s) => s.statut === "inscrit")} onAcces={onAcces} onReload={onReload} />
 
       {/* Souscription du membre */}
       {ouvert && myMemberId && (accesOk || maSous?.statut === "inscrit") && (
@@ -1135,8 +1141,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       {!gestionnaire && <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire={false} onReload={onReload} />}
 
       {/* Gestion (bureau ou porteur) */}
-      {gestionnaire && (
+      {(gestionnaire || isBureau) && (
         <Card style={{ marginBottom: 16, borderTopColor: "var(--primary)" }}>
+          {!gestionnaire && <p style={{ fontSize: 12.5, color: MUTED, background: "#F4F6FA", borderRadius: 8, padding: "8px 10px", margin: "0 0 10px" }}>👁️ {fill(L.controle_only, { nom: a.porteur_nom || "—" })}</p>}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
             <h3 style={{ margin: 0, fontSize: 16 }}>{L.manage}</h3>
             <div style={ligneBtns}>
@@ -1146,19 +1153,19 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
           </div>
 
           <div style={ligneBtns}>
-            {isBureau && ["propose", "ouvert"].includes(a.statut) && <Btn variant="outline" onClick={() => setEdition(true)}><Pencil size={14} /> {L.edit}</Btn>}
+            {gestionnaire && ["propose", "ouvert", "sondage"].includes(a.statut) && sousActives.length === 0 && <Btn variant="outline" onClick={() => setEdition(true)}><Pencil size={14} /> {L.edit}</Btn>}
             {isBureau && a.statut === "propose" && <>
               <Btn onClick={() => action("achats_valider_proposition", { p_id: a.id, p_ok: true, p_motif: null })} disabled={busy}><CheckCircle2 size={14} /> {L.approve}</Btn>
               <Btn variant="outline" onClick={() => { const m = window.prompt(L.refuse_prompt); if (m && m.trim()) action("achats_valider_proposition", { p_id: a.id, p_ok: false, p_motif: m.trim() }); }} disabled={busy}>{L.refuse}</Btn>
             </>}
-            {a.statut === "ouvert" && (
+            {gestionnaire && a.statut === "ouvert" && (
               <Btn onClick={() => action("achats_cloturer", { p_id: a.id }, L.confirm_close, (r) => (r === "annule" ? L.closed_ko : L.closed_ok))} disabled={busy}><Lock size={14} /> {L.close_subs}</Btn>
             )}
-            {isBureau && a.statut === "confirme" && (
+            {gestionnaire && a.statut === "confirme" && (
               <Btn onClick={() => action("achats_passer_commande", { p_id: a.id, p_note: noteCommande || null }, L.confirm_order)} disabled={busy || impayes > 0}><Receipt size={14} /> {L.order}</Btn>
             )}
-            {a.statut === "commande" && <Btn onClick={() => action("achats_marquer_livre", { p_id: a.id }, L.confirm_delivered)} disabled={busy}><Truck size={14} /> {L.delivered}</Btn>}
-            {isBureau && ["propose", "ouvert", "confirme"].includes(a.statut) && (
+            {gestionnaire && a.statut === "commande" && <Btn onClick={() => action("achats_marquer_livre", { p_id: a.id }, L.confirm_delivered)} disabled={busy}><Truck size={14} /> {L.delivered}</Btn>}
+            {gestionnaire && ["propose", "ouvert", "confirme", "sondage"].includes(a.statut) && (
               <Btn variant="danger" onClick={() => { const m = window.prompt(L.cancel_prompt); if (m && m.trim()) action("achats_annuler", { p_id: a.id, p_motif: m.trim() }); }} disabled={busy}><Ban size={14} /> {L.cancel}</Btn>
             )}
           </div>
@@ -1166,13 +1173,13 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
           {a.statut === "ouvert" && a.stock_max && Number(a.total_demande) > Number(a.stock_max) && (
             <div style={{ marginTop: 12, padding: 12, background: AMBER_LIGHT, borderRadius: 10, fontSize: 13 }}>
               <AlertTriangle size={14} color={AMBER} /> {fill(L.stock_short, { d: fmtQ(a.total_demande), s: fmtQ(a.stock_max), u })} {L[`m_${a.mode_repartition}`]}.
-              {a.mode_repartition === "tirage" && isBureau && (!tirage || tirage.statut === "annule") && (
+              {a.mode_repartition === "tirage" && gestionnaire && (!tirage || tirage.statut === "annule") && (
                 <div style={{ marginTop: 8 }}><Btn style={petitBtn} onClick={preparerTirage} disabled={busy}><Dices size={13} /> {L.prepare_draw}</Btn></div>
               )}
             </div>
           )}
 
-          {isBureau && a.statut === "confirme" && (
+          {gestionnaire && a.statut === "confirme" && (
             <div style={{ marginTop: 12 }}>
               {impayes > 0 && <Message msg={{ tone: "warn", text: fill(L.order_blocked, { n: impayes }) }} />}
               <Field label={L.order_note}><input style={inputStyle} value={noteCommande} onChange={(e) => setNoteCommande(e.target.value)} /></Field>
@@ -1205,7 +1212,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
           <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire onReload={onReload} />
 
           {/* Remise */}
-          {["livre", "cloture"].includes(a.statut) && (
+          {gestionnaire && ["livre", "cloture"].includes(a.statut) && (
             <div style={pleinEcran ? { position: "fixed", inset: 0, zIndex: 1000, background: "white", padding: 20, overflowY: "auto" } : { marginTop: 16 }}>
               <h4 style={{ margin: "0 0 6px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><PackageCheck size={15} /> {L.handover_title}
                 <span style={{ fontWeight: 400, color: MUTED, fontSize: 12.5 }}>— {fill(L.handed_count, { n: retenus.filter((s) => s.remis_le).length, t: retenus.length })}</span></h4>
@@ -1238,19 +1245,19 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <td style={td}>{s.remis_le ? fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") }) + (s.remis_a_nom ? ` (${fill(L.rm_by_proxy, { nom: s.remis_a_nom })})` : "") : "—"}</td>
                     <td style={td}>
                       <div style={ligneBtns}>
-                        {s.statut === "retenu" && l.solde + l.attente < 0 && a.statut !== "annule" && (
+                        {gestionnaire && s.statut === "retenu" && l.solde + l.attente < 0 && a.statut !== "annule" && (
                           <Btn style={petitBtn} onClick={() => setMvtForm({ member_id: s.member_id, nom: s.member_nom, sens: "entree", montant: String(r2(-(l.solde + l.attente))), mode: "especes", note: "" })}>{L.cash_in}</Btn>
                         )}
-                        {dispoRemb > 0 && (
+                        {gestionnaire && dispoRemb > 0 && (
                           <Btn variant="outline" style={petitBtn} onClick={() => setMvtForm({ member_id: s.member_id, nom: s.member_nom, sens: "sortie", montant: String(dispoRemb), mode: "interac", note: "" })}>{L.refund}</Btn>
                         )}
-                        {dispoRemb > 0 && isBureau && (["cloture", "annule"].includes(a.statut) || ["desiste", "non_retenu"].includes(s.statut)) && (
+                        {dispoRemb > 0 && gestionnaire && (["cloture", "annule"].includes(a.statut) || ["desiste", "non_retenu"].includes(s.statut)) && (
                           <Btn variant="outline" style={petitBtn} onClick={() => action("achats_convertir_avoir", { p_achat: a.id, p_member: s.member_id, p_montant: dispoRemb }, fill(L.confirm_to_credit, { m: money(dispoRemb, devise) }))}>{L.to_credit}</Btn>
                         )}
-                        {isBureau && ["ouvert", "confirme"].includes(a.statut) && ["inscrit", "retenu"].includes(s.statut) && (
+                        {gestionnaire && ["ouvert", "confirme"].includes(a.statut) && ["inscrit", "retenu"].includes(s.statut) && (
                           <Btn variant="outline" style={petitBtn} onClick={() => { const m = window.prompt(L.remove_prompt); if (m && m.trim()) action("achats_retirer_souscripteur", { p_sous: s.id, p_motif: m.trim() }); }}>{L.remove}</Btn>
                         )}
-                        {["livre", "cloture"].includes(a.statut) && s.statut === "retenu" && !s.remis_le && (
+                        {gestionnaire && ["livre", "cloture"].includes(a.statut) && s.statut === "retenu" && !s.remis_le && (
                           <Btn style={petitBtn} onClick={() => remettre({ p_sous: s.id })}><PackageCheck size={12} /> {L.hand_over}</Btn>
                         )}
                       </div>
@@ -1285,7 +1292,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <Field label={L.bilan_fees}><input type="number" min="0" step="0.01" style={inputStyle} value={bilan.frais} onChange={(e) => setBilan({ ...bilan, frais: e.target.value })} /></Field>
                     <Field label={L.bilan_note}><input style={inputStyle} value={bilan.note} onChange={(e) => setBilan({ ...bilan, note: e.target.value })} /></Field>
                   </div>
-                  <Btn variant="outline" onClick={() => action("achats_saisir_bilan", { p_id: a.id, p_cout_produits: Number(bilan.cout) || 0, p_frais_communs: Number(bilan.frais) || 0, p_note: bilan.note || null }, null, L.bilan_saved)} disabled={busy || bilan.cout === ""}>{L.bilan_save}</Btn>
+                  {gestionnaire && <Btn variant="outline" onClick={() => action("achats_saisir_bilan", { p_id: a.id, p_cout_produits: Number(bilan.cout) || 0, p_frais_communs: Number(bilan.frais) || 0, p_note: bilan.note || null }, null, L.bilan_saved)} disabled={busy || bilan.cout === ""}>{L.bilan_save}</Btn>}
                   {a.bilan_saisi_le && (
                     <div style={{ marginTop: 12 }}>
                       <p style={{ fontSize: 13 }}>{fill(L.bilan_entered, { date: formatEventDateTime(a.bilan_saisi_le, lang), p: money(a.cout_reel_produits, devise), f: money(a.frais_communs_reels, devise), t: money(totalReel, devise) })}</p>
@@ -1513,8 +1520,9 @@ export default function AchatsGroupes({ profile, isBureau, association }) {
   if (loading) return <Container><Section><p>{t("loading")}</p></Section></Container>;
 
   const parId = Object.fromEntries(achats.map((a) => [a.id, a]));
-  const peutGerer = (a) => !!a && (isBureau || (!!profile.member_id && a.porteur_member_id === profile.member_id));
-  const aControler = mouvements.filter((m) => m.achat_id && (m.statut === "declare" || m.statut === "recu") && peutGerer(parId[m.achat_id]));
+  const peutGerer = (a) => !!a && (a.porteur_member_id ? !!profile.member_id && a.porteur_member_id === profile.member_id : a.propose_par === profile.id || profile.role === "bureau_president");
+  // Le porteur confirme « reçu » ; un autre membre du bureau valide.
+  const aControler = mouvements.filter((m) => m.achat_id && ((m.statut === "declare" && peutGerer(parId[m.achat_id])) || (m.statut === "recu" && isBureau && m.recu_par !== profile.id)));
   const achatSel = selection ? parId[selection] : null;
   const onglets = [["achats", L.tab_achats], ["releve", L.tab_releve], ...(isBureau ? [["bilan", L.tab_bilan]] : [])];
 
