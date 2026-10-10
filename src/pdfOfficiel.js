@@ -39,7 +39,27 @@ export function pdfTexte(s) {
     .replace(/[\u2013\u2014]/g, "-")
     .replace(/\u2192/g, "->")
     .replace(/\u2026/g, "...")
-    .replace(/[^\n -\u00FF]/g, "");
+    .replace(/\u2022/g, "-")
+    // Le reste hors de l'alphabet WinAnsi (icônes, emoji…) disparaît ; on
+    // translittère d'abord les lettres absentes de Latin-1 (oe, OE, euro).
+    .replace(/\u0153/g, "oe").replace(/\u0152/g, "OE").replace(/\u20AC/g, "EUR")
+    .replace(/[^\n -\u00FF]/g, "")
+    .replace(/ {2,}/g, " ");
+}
+
+// 2026-10-10 (signalé par l'utilisateur : « certains caractères ne sont pas
+// bons » sur les PDF) : protection unique pour TOUTE l'application — chaque
+// texte écrit dans un PDF (y compris les tableaux, qui passent par la même
+// fonction) est nettoyé, même dans les modules qui n'appellent pas
+// pdfTexte eux-mêmes. Appelée une fois au démarrage (main.jsx).
+export function protegerTextesPdf() {
+  return import("jspdf").then(({ jsPDF }) => {
+    if (!jsPDF?.API || jsPDF.API.__uniaTexteProtege) return;
+    const original = jsPDF.API.text;
+    const nettoyer = (v) => (typeof v === "string" ? pdfTexte(v) : Array.isArray(v) ? v.map(nettoyer) : v);
+    jsPDF.API.text = function (texte, ...reste) { return original.call(this, nettoyer(texte), ...reste); };
+    jsPDF.API.__uniaTexteProtege = true;
+  }).catch(() => { /* jsPDF indisponible : chaque module garde son propre nettoyage */ });
 }
 
 // Logo de l'association → image PNG utilisable par jsPDF, avec son

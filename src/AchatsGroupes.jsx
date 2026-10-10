@@ -28,7 +28,7 @@ import {
   Truck, PackageCheck, ShieldCheck, Upload, Users, Dices, PiggyBank, Eye, Lock, Receipt, BarChart3,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
+import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation, pdfTexte } from "./pdfOfficiel";
 import { AccesPanel, FriseAchat, SondagePanel, DevisPanel, CreneauxPanel, SuiviPanel, AvisPanel, NoteFournisseur, FacturePanel, LimitePaiementPanel, PayerCarte, RemiseVisuelle } from "./AchatsPlus.jsx";
 import { TXT_ACHATS_PLUS } from "./achatsTextes";
 import { bip, toast } from "./achatsOutils";
@@ -526,7 +526,14 @@ function telechargerCSV(fichier, head, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function exporterPDF({ association, titre, sousTitre, lignes = [], tableaux = [], fichier, signatures = null, sortie = "telecharger" }) {
+async function exporterPDF({ association, titre: titreBrut, sousTitre: sousTitreBrut, lignes: lignesBrutes = [], tableaux: tableauxBruts = [], fichier, signatures: signaturesBrutes = null, sortie = "telecharger" }) {
+  // 2026-10-10 (signalé par l'utilisateur : caractères illisibles sur le reçu) :
+  // tout le texte passe par pdfTexte (icônes, espaces fines, guillemets…).
+  const T = (v) => pdfTexte(v).replace(/s{2,}/g, " ").trim();
+  const titre = T(titreBrut), sousTitre = sousTitreBrut ? T(sousTitreBrut) : sousTitreBrut;
+  const lignes = lignesBrutes.map(T);
+  const tableaux = tableauxBruts.map((tb) => ({ ...tb, titre: tb.titre ? T(tb.titre) : tb.titre, head: tb.head.map(T), body: tb.body.map((r) => r.map(T)) }));
+  const signatures = signaturesBrutes ? signaturesBrutes.map((g) => ({ ...g, titre: T(g.titre), signe: g.signe ? T(g.signe) : g.signe, empreinte: T(g.empreinte), attente: T(g.attente), manuel: T(g.manuel) })) : null;
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
@@ -569,7 +576,7 @@ async function exporterPDF({ association, titre, sousTitre, lignes = [], tableau
     y += 100;
   }
   doc.setFontSize(8); doc.setTextColor(120);
-  doc.text(new Date().toLocaleString("fr-CA"), x, doc.internal.pageSize.getHeight() - 20);
+  doc.text(T(formatEventDateTime(new Date().toISOString(), "fr")), x, doc.internal.pageSize.getHeight() - 20);
   piedsDePageOfficiels(doc, association, { marge: x, texte: titre, libellePage: (p, n) => `${p} / ${n}` });
   if (sortie === "blob") return doc.output("blob");
   doc.save(fichier);
@@ -587,7 +594,7 @@ function exporterRecu({ L, a, s, mouvements, association, devise }) {
     lignes: [
       fill(L.recu_l1, { nom: s.member_nom, q: fmtQ(s.quantite_attribuee), u, a: a.titre, f: a.fournisseur || "—" }),
       fill(L.recu_l2, { du: money(du, devise), p: money(paye, devise), s: money(r2(paye - du), devise) }),
-      s.remis_le ? fill(L.recu_l3, { d: new Date(s.remis_le).toLocaleString("fr-CA"), m: s.remise_mode ? (s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : L["rm_mode_" + s.remise_mode]) : "" }) : L.recu_l3_non,
+      s.remis_le ? fill(L.recu_l3, { d: formatEventDateTime(s.remis_le, "fr"), m: s.remise_mode ? (s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : L["rm_mode_" + s.remise_mode]) : "" }) : L.recu_l3_non,
       L.recu_note,
     ],
     tableaux: [{ titre: L.recu_paiements, head: [L.col_date, L.col_kind, L.col_mode, L.col_amount, L.col_received, L.col_validated],
@@ -604,7 +611,7 @@ function exporterPvCloture({ L, a, sous, mouvements, association, devise, signat
   const estime = r2(Number(a.prix_unitaire) * Number(a.total_attribue) + Number(a.frais_estimes || 0));
   const sig = (role, titre) => {
     const x = signatures.find((g) => g.role === role);
-    return { titre, signe: x ? fill(L.pv_signe, { nom: x.nom || "", d: new Date(x.signe_le).toLocaleString("fr-CA") }) : null, empreinte: x ? fill(L.pv_empreinte, { h: String(x.empreinte).slice(0, 16) }) : "", attente: L.pv_attente, manuel: L.pv_manuel };
+    return { titre, signe: x ? fill(L.pv_signe, { nom: x.nom || "", d: formatEventDateTime(x.signe_le, "fr") }) : null, empreinte: x ? fill(L.pv_empreinte, { h: String(x.empreinte).slice(0, 16) }) : "", attente: L.pv_attente, manuel: L.pv_manuel };
   };
   return exporterPDF({
     association, titre: L.pv_titre, sousTitre: a.titre, fichier: `PV_cloture_${nomFichier(a.titre)}.pdf`, sortie,
@@ -1248,7 +1255,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
     const rows = sousActives.map((s) => {
       const l = ligneSous(s);
       return [s.member_nom, L[`s_${s.statut}`], fmtQ(s.quantite_demandee), fmtQ(s.quantite_attribuee), l.du.toFixed(2), l.paye.toFixed(2), l.solde.toFixed(2),
-        s.remis_le ? new Date(s.remis_le).toLocaleString("fr-CA") : ""];
+        s.remis_le ? formatEventDateTime(s.remis_le, "fr") : ""];
     });
     if (format === "csv") { telechargerCSV(`achat_${nomFichier(a.titre)}.csv`, L.csv_head_sheet, rows); return; }
     exporterPDF({

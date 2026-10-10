@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { registerServiceWorker } from './shared'
+import { protegerTextesPdf } from './pdfOfficiel'
 
 // Mode hors-ligne / application installable (PWA), suite 84, 2026-09-28 —
 // enregistré ici (au démarrage, pour TOUT le monde) plutôt que seulement
@@ -11,6 +12,10 @@ import { registerServiceWorker } from './shared'
 // cache son interface et de continuer à s'afficher hors ligne, même pour
 // un utilisateur qui ne s'abonne jamais aux notifications.
 registerServiceWorker();
+
+// Nettoyage automatique des caractères de tous les PDF (2026-10-10), chargé
+// en tâche de fond pour ne pas ralentir le démarrage.
+setTimeout(protegerTextesPdf, 1500);
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
