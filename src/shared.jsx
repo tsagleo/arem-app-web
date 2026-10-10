@@ -450,7 +450,9 @@ export function Container({ children, style }) { return <div style={{ maxWidth: 
 export function Pill({ children, color = TEAL, bg = TEAL_LIGHT }) {
   return <span style={{ display: "inline-block", background: bg, color, fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", padding: "4px 12px", borderRadius: 999 }}>{children}</span>;
 }
-export function Card({ children, style }) {
+// 2026-10-10 : les autres propriétés (onClick, title, role…) sont transmises —
+// une carte cliquable (Mon espace, offres d'emploi) ne réagissait pas au clic.
+export function Card({ children, style, ...rest }) {
   // overflowWrap (suite Phase 6, 2026-09-29) — protège TOUTES les cartes de
   // l'appli contre un texte trop long sans espace (ex. un message d'erreur
   // technique collé par erreur dans une annonce) qui, sans ça, élargit la
@@ -466,7 +468,7 @@ export function Card({ children, style }) {
   // dépassait cette largeur minimale) malgré overflowWrap : le texte
   // était prêt à revenir à la ligne, mais la carte n'avait pas le droit
   // de rétrécir pour l'y forcer.
-  return <div style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 4px 18px rgba(31,56,100,0.08)", borderTop: "3px solid transparent", overflowWrap: "break-word", minWidth: 0, ...style }}>{children}</div>;
+  return <div {...rest} style={{ background: "white", borderRadius: 12, padding: 20, boxShadow: "0 4px 18px rgba(31,56,100,0.08)", borderTop: "3px solid transparent", overflowWrap: "break-word", minWidth: 0, ...style }}>{children}</div>;
 }
 export function RuleBox({ children }) {
   return <div style={{ background: "#FBF3D9", border: "1px solid #EEDDA0", borderRadius: 10, padding: "12px 16px", marginBottom: 18, fontSize: 13, color: "#8a6d1a" }}><b>{"\u2139 "}</b>{children}</div>;
