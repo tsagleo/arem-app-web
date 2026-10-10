@@ -25,10 +25,14 @@ import { useState, useEffect, useCallback } from "react";
 import {
   Compass, BookOpen, Route, School, MessageCircleQuestion, Briefcase, BarChart3, Search, Star, ExternalLink, Plus, X,
   CheckCircle2, Circle, Award, Calendar, Users, Download, Trash2, Send, Video, MapPin, Sparkles, Heart, Clock, EyeOff,
+  Pencil, Flag, User, Globe,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { Card, Btn, Field, inputStyle, friendlyError, foldText, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
 import { exporterAttestation, exporterRapportImpact } from "./jeunessePdf";
+import { MonEspaceTab, QuizPasser, QuizEditor, SupportsClasse, PilotagePlus } from "./CarrefourPlus.jsx";
+import { TXT_PLUS } from "./carrefourTextes";
+import { telechargerIcs, ouvrirFichier, signaler, ressourcesJeunesse } from "./carrefourOutils";
 
 const AMBER = "#B7791F";
 const GREY = "#686F7D";
@@ -230,6 +234,21 @@ const TXT = {
   },
 };
 
+const TXT_EDIT = {
+  fr: {
+    edit: "Modifier", save_changes: "Enregistrer les modifications", cls_public: "Ouverte au public (affichée sur la vitrine, inscription sans compte)", cls_public_badge: "Public",
+    cls_join_wait: "M'inscrire sur la liste d'attente", cls_waiting: "{n} en attente", cls_rank: "Liste d'attente : n° {n}", cls_waitlist: "Liste d'attente",
+    cls_public_regs: "Inscriptions publiques", ics_class: "Ajouter au calendrier", ics_one: "Ajouter cette séance au calendrier",
+    men_follow: "Demander le suivi d'un responsable", men_follow_confirm: "Un responsable du Carrefour pourra lire vos échanges pour vous aider. Continuer ?", men_followed: "Suivi par un responsable",
+  },
+  en: {
+    edit: "Edit", save_changes: "Save changes", cls_public: "Open to the public (shown on the public page, registration without an account)", cls_public_badge: "Public",
+    cls_join_wait: "Join the waiting list", cls_waiting: "{n} waiting", cls_rank: "Waiting list: #{n}", cls_waitlist: "Waiting list",
+    cls_public_regs: "Public registrations", ics_class: "Add to calendar", ics_one: "Add this session to my calendar",
+    men_follow: "Ask a coordinator to follow up", men_follow_confirm: "A coordinator will be able to read your messages to help. Continue?", men_followed: "Followed by a coordinator",
+  },
+};
+
 const small = { padding: "6px 12px", fontSize: 12.5 };
 const muted = { fontSize: 12.5, color: GREY, margin: 0 };
 const linkBtn = (color) => ({ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12.5, fontWeight: 600, color, background: "none", border: "none", cursor: "pointer", padding: 0 });
@@ -244,18 +263,19 @@ function lireProfil() { try { return JSON.parse(window.localStorage.getItem("car
 // =====================================================================
 // Ressources : carte, formulaire
 // =====================================================================
-function RessourceCarte({ S, r, fav, onFav, onOpen, canDelete, onDelete }) {
+function RessourceCarte({ S, r, fav, onFav, onOpen, canDelete, onDelete, canEdit, onEdit, onReport }) {
   return (
     <div style={{ background: "white", borderRadius: 12, padding: 14, boxShadow: "0 2px 10px rgba(31,56,100,0.06)", borderLeft: `4px solid ${DOM_COULEUR[r.domaine]}`, display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
         <b style={{ fontSize: 13.5 }}>{r.titre}</b>
-        <button onClick={onFav} title={fav ? S.fav_del : S.fav_add} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: fav ? AMBER : "#C3C8D0" }}><Star size={16} fill={fav ? AMBER : "none"} /></button>
+        {onFav && !r._jeunesse && <button onClick={onFav} title={fav ? S.fav_del : S.fav_add} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: fav ? AMBER : "#C3C8D0" }}><Star size={16} fill={fav ? AMBER : "none"} /></button>}
       </div>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
         <Pastille color={DOM_COULEUR[r.domaine]}>{S["dom_" + r.domaine]}</Pastille>
         <Pastille color={GREY}>{S["type_" + r.type]}</Pastille>
         {r.theme && <Pastille color={GREY}>{r.theme}</Pastille>}
         {r.externe && <Pastille color={TEAL}>{S.ext_badge}</Pastille>}
+        {r._jeunesse && <Pastille color="#B7791F">🎓 Jeunesse</Pastille>}
         {r.statut === "proposee" && <Pastille color={AMBER}>{S.res_pending}</Pastille>}
       </div>
       {r.description && <p style={{ ...muted, whiteSpace: "pre-wrap" }}>{r.description}</p>}
@@ -263,34 +283,42 @@ function RessourceCarte({ S, r, fav, onFav, onOpen, canDelete, onDelete }) {
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: "auto" }}>
         <Btn style={small} onClick={onOpen}><ExternalLink size={13} /> {S.res_open}</Btn>
         {r.depose_par_nom && <span style={{ fontSize: 11, color: GREY }}>{S.res_by.replace("{nom}", r.depose_par_nom)}</span>}
-        {canDelete && <button onClick={onDelete} style={{ ...linkBtn(RED), marginLeft: "auto" }}><Trash2 size={13} /></button>}
+        <span style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+          {canEdit && !r._jeunesse && <button onClick={onEdit} title={S.edit} style={linkBtn(GREY)}><Pencil size={13} /></button>}
+          {onReport && !r._jeunesse && <button onClick={onReport} title={S.report} style={linkBtn(GREY)}><Flag size={13} /></button>}
+          {canDelete && !r._jeunesse && <button onClick={onDelete} title={S.del} style={linkBtn(RED)}><Trash2 size={13} /></button>}
+        </span>
       </div>
     </div>
   );
 }
 
-function RessourceForm({ S, t, profile, gest, onDone, onCancel }) {
-  const [f, setF] = useState({ titre: "", description: "", domaine: "academique", theme: "", publics: ["tous"], type: "lien", url: "", externe: false });
+function RessourceForm({ S, t, profile, gest, initial, onDone, onCancel }) {
+  const [f, setF] = useState(initial
+    ? { titre: initial.titre, description: initial.description || "", domaine: initial.domaine, theme: initial.theme || "", publics: initial.publics || ["tous"], type: initial.type, url: initial.url || "", externe: !!initial.externe }
+    : { titre: "", description: "", domaine: "academique", theme: "", publics: ["tous"], type: "lien", url: "", externe: false });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const togglePub = (p) => setF((x) => ({ ...x, publics: x.publics.includes(p) ? x.publics.filter((y) => y !== p) : [...x.publics, p] }));
   async function save() {
     if (!f.titre.trim()) return;
-    if (!f.url.trim() && !file) { alert(S.res_need_src); return; }
+    if (!f.url.trim() && !file && !initial?.storage_path) { alert(S.res_need_src); return; }
     setBusy(true);
     try {
-      let storage_path = null;
+      let storage_path = initial?.storage_path || null;
       if (file) {
         if (file.size > 50 * 1024 * 1024) throw new Error("50 Mo max.");
         storage_path = `${profile.association_id}/${Date.now()}_${file.name.replace(/[^A-Za-z0-9._-]+/g, "_")}`;
         const { error } = await supabase.storage.from("savoir-ressources").upload(storage_path, file);
         if (error) throw error;
       }
-      const { error } = await supabase.from("savoir_ressources").insert({
-        association_id: profile.association_id, titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine,
-        theme: f.theme.trim() || null, publics: f.publics.length ? f.publics : ["tous"], type: f.type, url: f.url.trim() || null, storage_path,
-        externe: f.externe, statut: gest ? "publiee" : "proposee", depose_par: profile.id, depose_par_nom: profile.nom_complet,
-      });
+      const champs = {
+        titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine, theme: f.theme.trim() || null,
+        publics: f.publics.length ? f.publics : ["tous"], type: f.type, url: f.url.trim() || null, storage_path, externe: f.externe,
+      };
+      const { error } = initial
+        ? await supabase.from("savoir_ressources").update(champs).eq("id", initial.id)
+        : await supabase.from("savoir_ressources").insert({ ...champs, association_id: profile.association_id, statut: gest ? "publiee" : "proposee", depose_par: profile.id, depose_par_nom: profile.nom_complet });
       if (error) throw error;
       onDone();
     } catch (e) { alert(friendlyError(e, t)); } finally { setBusy(false); }
@@ -313,7 +341,7 @@ function RessourceForm({ S, t, profile, gest, onDone, onCancel }) {
       {gest && <label style={{ display: "flex", gap: 8, fontSize: 13, marginBottom: 10 }}><input type="checkbox" checked={f.externe} onChange={(e) => setF({ ...f, externe: e.target.checked })} /> {S.res_ext}</label>}
       {!gest && <p style={{ ...muted, marginBottom: 10 }}>{S.res_prop_note}</p>}
       <div style={{ display: "flex", gap: 8 }}>
-        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{gest ? S.res_save : S.res_save_prop}</Btn>
+        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{initial ? S.save_changes : gest ? S.res_save : S.res_save_prop}</Btn>
         <Btn variant="outline" onClick={onCancel}>{S.cancel}</Btn>
       </div>
     </Card>
@@ -323,9 +351,12 @@ function RessourceForm({ S, t, profile, gest, onDone, onCancel }) {
 // =====================================================================
 // Parcours
 // =====================================================================
-function ParcoursForm({ S, t, profile, ressources, onDone, onCancel }) {
+function ParcoursForm({ S, t, profile, ressources, initial, onDone, onCancel }) {
   const vide = { titre: "", description: "", domaine: "professionnel", publics: ["tous"], niveau: "debutant", duree: "", etapes: [{ titre: "", consigne: "", ressource_id: "", url: "" }] };
-  const [f, setF] = useState(vide);
+  const [f, setF] = useState(initial ? {
+    titre: initial.p.titre, description: initial.p.description || "", domaine: initial.p.domaine, publics: initial.p.publics || ["tous"], niveau: initial.p.niveau, duree: initial.p.duree_estimee || "",
+    etapes: initial.etapes.map((e) => ({ id: e.id, titre: e.titre, consigne: e.consigne || "", ressource_id: e.ressource_id || "", url: e.url || "" })),
+  } : vide);
   const [busy, setBusy] = useState(false);
   function modele(k) {
     const m = MODELES[k];
@@ -337,6 +368,27 @@ function ParcoursForm({ S, t, profile, ressources, onDone, onCancel }) {
     if (!f.titre.trim() || etapes.length === 0) return;
     setBusy(true);
     try {
+      if (initial) {
+        // Modification : les étapes existantes gardent leur identifiant (et donc
+        // la progression des membres) ; les nouvelles sont ajoutées, les
+        // retirées supprimées.
+        const { error } = await supabase.from("savoir_parcours").update({
+          titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine, publics: f.publics, niveau: f.niveau, duree_estimee: f.duree.trim() || null,
+        }).eq("id", initial.p.id);
+        if (error) throw error;
+        const garder = new Set(etapes.filter((e) => e.id).map((e) => e.id));
+        const aRetirer = initial.etapes.filter((e) => !garder.has(e.id)).map((e) => e.id);
+        if (aRetirer.length) { const { error: eDel } = await supabase.from("savoir_parcours_etapes").delete().in("id", aRetirer); if (eDel) throw eDel; }
+        for (const [i, e] of etapes.entries()) {
+          const champs = { ordre: i + 1, titre: e.titre.trim(), consigne: e.consigne.trim() || null, ressource_id: e.ressource_id || null, url: e.url.trim() || null };
+          const { error: eE } = e.id
+            ? await supabase.from("savoir_parcours_etapes").update(champs).eq("id", e.id)
+            : await supabase.from("savoir_parcours_etapes").insert({ ...champs, association_id: profile.association_id, parcours_id: initial.p.id });
+          if (eE) throw eE;
+        }
+        onDone();
+        return;
+      }
       const { data: p, error } = await supabase.from("savoir_parcours").insert({
         association_id: profile.association_id, titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine,
         publics: f.publics, niveau: f.niveau, duree_estimee: f.duree.trim() || null, cree_par: profile.id, cree_par_nom: profile.nom_complet,
@@ -352,10 +404,10 @@ function ParcoursForm({ S, t, profile, ressources, onDone, onCancel }) {
   }
   return (
     <Card style={{ padding: 16, marginBottom: 14 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+      {!initial && <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
         <span style={{ fontSize: 12.5, fontWeight: 600 }}>{S.par_model} :</span>
         {Object.entries(MODELES).map(([k, m]) => <button key={k} type="button" style={chip(false)} onClick={() => modele(k)}>{m.titre}</button>)}
-      </div>
+      </div>}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0 12px" }}>
         <Field label={S.par_title}><input required style={inputStyle} value={f.titre} onChange={(e) => setF({ ...f, titre: e.target.value })} /></Field>
         <Field label={S.res_dom}><select style={inputStyle} value={f.domaine} onChange={(e) => setF({ ...f, domaine: e.target.value })}>{DOMAINES.map((d) => <option key={d} value={d}>{S["dom_" + d]}</option>)}</select></Field>
@@ -384,14 +436,14 @@ function ParcoursForm({ S, t, profile, ressources, onDone, onCancel }) {
       ))}
       <button onClick={() => setF((x) => ({ ...x, etapes: [...x.etapes, { titre: "", consigne: "", ressource_id: "", url: "" }] }))} style={{ ...linkBtn(TEAL), marginBottom: 12 }}><Plus size={13} /> {S.par_add_step}</button>
       <div style={{ display: "flex", gap: 8 }}>
-        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{S.par_save}</Btn>
+        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{initial ? S.save_changes : S.par_save}</Btn>
         <Btn variant="outline" onClick={onCancel}>{S.cancel}</Btn>
       </div>
     </Card>
   );
 }
 
-function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, faits, ressources, onOpenRes, onChanged }) {
+function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, faits, ressources, quizNb, onOpenRes, onEdit, onChanged }) {
   const [ouvert, setOuvert] = useState(false);
   const mesEtapes = etapes.filter((e) => e.parcours_id === p.id).sort((a, b) => a.ordre - b.ordre);
   const nbFait = mesEtapes.filter((e) => faits.has(e.id)).length;
@@ -434,7 +486,7 @@ function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, fait
             signataire: signataire(association), association, lang, reference: `P-${String(p.id).slice(0, 8).toUpperCase()}`, fileName: "certificat_parcours.pdf",
           }).catch((e) => alert(friendlyError(e, t)))}><Award size={13} /> {S.par_certif}</Btn>
         )}
-        {gest && <button onClick={archiver} style={{ ...linkBtn(GREY), marginLeft: "auto" }}>{S.par_archive}</button>}
+        {gest && <span style={{ marginLeft: "auto", display: "flex", gap: 12 }}><button onClick={onEdit} style={linkBtn(GREY)}><Pencil size={12} /> {S.edit}</button><button onClick={archiver} style={linkBtn(GREY)}>{S.par_archive}</button></span>}
       </div>
       {fini && <p style={{ fontSize: 12.5, color: TEAL, fontWeight: 700, margin: "8px 0 0" }}>🎉 {S.par_complete}</p>}
       {ouvert && (
@@ -443,7 +495,8 @@ function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, fait
             const r = ressources.find((x) => x.id === e.ressource_id);
             return (
               <div key={e.id} style={{ display: "flex", gap: 10, padding: "8px 0", borderTop: "1px solid #EEF0F3", alignItems: "flex-start" }}>
-                <button onClick={() => basculer(e)} title={faits.has(e.id) ? S.par_done : S.par_todo} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 1 }}>
+                <button onClick={() => (!quizNb[e.id] || faits.has(e.id)) && basculer(e)} title={quizNb[e.id] && !faits.has(e.id) ? S.quiz_take.replace("{n}", quizNb[e.id]) : faits.has(e.id) ? S.par_done : S.par_todo}
+                  style={{ background: "none", border: "none", cursor: quizNb[e.id] && !faits.has(e.id) ? "default" : "pointer", padding: 0, marginTop: 1 }}>
                   {faits.has(e.id) ? <CheckCircle2 size={18} color={TEAL} /> : <Circle size={18} color="#B5BCC8" />}
                 </button>
                 <div style={{ flex: 1 }}>
@@ -453,6 +506,9 @@ function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, fait
                     {r && <button onClick={() => onOpenRes(r)} style={linkBtn(TEAL)}><BookOpen size={12} /> {r.titre}</button>}
                     {e.url && <a href={e.url} target="_blank" rel="noreferrer" style={{ ...linkBtn(TEAL), textDecoration: "none" }}><ExternalLink size={12} /> {e.url.replace(/^https?:\/\//, "").slice(0, 40)}</a>}
                   </div>
+                  {quizNb[e.id] > 0 && !faits.has(e.id) && <QuizPasser S={S} t={t} etape={e} nb={quizNb[e.id]} onDone={onChanged} />}
+                  {quizNb[e.id] > 0 && faits.has(e.id) && <div style={{ fontSize: 11.5, color: TEAL, fontWeight: 600, marginTop: 4 }}>📝 {S.quiz_locked}</div>}
+                  {gest && <QuizEditor S={S} t={t} profile={profile} etape={e} onChanged={onChanged} />}
                 </div>
               </div>
             );
@@ -466,18 +522,22 @@ function ParcoursCarte({ S, t, lang, profile, gest, association, p, etapes, fait
 // =====================================================================
 // Classes
 // =====================================================================
-function ClasseForm({ S, t, profile, gest, onDone, onCancel }) {
-  const [f, setF] = useState({ titre: "", description: "", domaine: "professionnel", publics: ["tous"], niveau: "debutant", capacite: "", mode: "distance", lieu: "", lien_visio: jitsi() });
+function ClasseForm({ S, t, profile, gest, initial, onDone, onCancel }) {
+  const [f, setF] = useState(initial
+    ? { titre: initial.titre, description: initial.description || "", domaine: initial.domaine, publics: initial.publics || ["tous"], niveau: initial.niveau, capacite: initial.capacite || "", mode: initial.mode, lieu: initial.lieu || "", lien_visio: initial.lien_visio || jitsi(), publique: !!initial.publique }
+    : { titre: "", description: "", domaine: "professionnel", publics: ["tous"], niveau: "debutant", capacite: "", mode: "distance", lieu: "", lien_visio: jitsi(), publique: false });
   const [busy, setBusy] = useState(false);
   async function save() {
     if (!f.titre.trim()) return;
     setBusy(true);
-    const { error } = await supabase.from("savoir_classes").insert({
-      association_id: profile.association_id, titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine, publics: f.publics,
+    const champs = {
+      titre: f.titre.trim(), description: f.description.trim() || null, domaine: f.domaine, publics: f.publics,
       niveau: f.niveau, capacite: Number(f.capacite) > 0 ? Number(f.capacite) : null, mode: f.mode, lieu: f.lieu.trim() || null,
-      lien_visio: f.mode === "presentiel" ? null : f.lien_visio.trim() || null, statut: gest ? "ouverte" : "proposee",
-      animateur_id: profile.id, animateur_nom: profile.nom_complet, cree_par: profile.id,
-    });
+      lien_visio: f.mode === "presentiel" ? null : f.lien_visio.trim() || null, publique: !!f.publique,
+    };
+    const { error } = initial
+      ? await supabase.from("savoir_classes").update(champs).eq("id", initial.id)
+      : await supabase.from("savoir_classes").insert({ ...champs, association_id: profile.association_id, statut: gest ? "ouverte" : "proposee", animateur_id: profile.id, animateur_nom: profile.nom_complet, cree_par: profile.id });
     setBusy(false);
     if (error) { alert(friendlyError(error, t)); return; }
     onDone();
@@ -495,16 +555,17 @@ function ClasseForm({ S, t, profile, gest, onDone, onCancel }) {
       </div>
       <Field label={S.cls_desc}><textarea style={{ ...inputStyle, minHeight: 60 }} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
       <Field label={S.res_publics}><div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{PUBLICS.map((p) => <button type="button" key={p} style={chip(f.publics.includes(p))} onClick={() => setF((x) => ({ ...x, publics: x.publics.includes(p) ? x.publics.filter((y) => y !== p) : [...x.publics, p] }))}>{S["pub_" + p]}</button>)}</div></Field>
-      {!gest && <p style={{ ...muted, marginBottom: 10 }}>{S.cls_prop_note}</p>}
+      <label style={{ display: "flex", gap: 8, fontSize: 13, marginBottom: 10, alignItems: "flex-start" }}><input type="checkbox" style={{ marginTop: 3 }} checked={!!f.publique} onChange={(e) => setF({ ...f, publique: e.target.checked })} /> <span><Globe size={13} /> {S.cls_public}</span></label>
+      {!gest && !initial && <p style={{ ...muted, marginBottom: 10 }}>{S.cls_prop_note}</p>}
       <div style={{ display: "flex", gap: 8 }}>
-        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{S.cls_save}</Btn>
+        <Btn disabled={busy || !f.titre.trim()} onClick={save}>{initial ? S.save_changes : S.cls_save}</Btn>
         <Btn variant="outline" onClick={onCancel}>{S.cancel}</Btn>
       </div>
     </Card>
   );
 }
 
-function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscriptions, presences, avis, onChanged }) {
+function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscriptions, inscriptionsPubliques, presences, avis, supports, onEdit, onChanged }) {
   const [ouvert, setOuvert] = useState(false);
   const [ses, setSes] = useState({ debut: "", duree: 90, sujet: "" });
   const [monAvis, setMonAvis] = useState({ note: 5, commentaire: "" });
@@ -513,7 +574,13 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
   const inscrits = inscriptions.filter((i) => i.classe_id === c.id && i.statut === "inscrit");
   const moi = inscriptions.find((i) => i.classe_id === c.id && i.profile_id === profile.id);
   const jeSuisInscrit = moi?.statut === "inscrit";
-  const complet = c.capacite && inscrits.length >= c.capacite;
+  const enAttente = moi?.statut === "attente";
+  const publics = inscriptionsPubliques.filter((i) => i.classe_id === c.id && i.statut !== "retire");
+  const attente = inscriptions.filter((i) => i.classe_id === c.id && i.statut === "attente").sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const rang = enAttente ? attente.findIndex((i) => i.id === moi.id) + 1 : 0;
+  const prises = inscrits.length + publics.filter((i) => i.statut === "inscrit").length;
+  const complet = c.capacite && prises >= c.capacite;
+  const icsSeances = (liste) => telechargerIcs(liste.map((s) => ({ id: s.id, debut: s.debut, duree_min: s.duree_min, titre: `${c.titre}${s.sujet ? ` — ${s.sujet}` : ""}`, description: c.description, lieu: c.lieu, url: c.lien_visio })), `classe_${c.titre.replace(/[^A-Za-z0-9]+/g, "_").slice(0, 30)}.ics`);
   const avisC = avis.filter((a) => a.classe_id === c.id);
   const moyenne = avisC.length ? avisC.reduce((s, a) => s + a.note, 0) / avisC.length : 0;
   const realisees = mesSeances.filter((s) => s.statut === "realisee");
@@ -528,7 +595,7 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
   }
   const statut = (s) => act(() => supabase.from("savoir_classes").update({ statut: s }).eq("id", c.id));
   const inscrire = () => moi
-    ? act(() => supabase.from("savoir_inscriptions").update({ statut: jeSuisInscrit ? "retire" : "inscrit" }).eq("id", moi.id))
+    ? act(() => supabase.from("savoir_inscriptions").update({ statut: jeSuisInscrit || enAttente ? "retire" : "inscrit" }).eq("id", moi.id))
     : act(() => supabase.from("savoir_inscriptions").insert({ association_id: profile.association_id, classe_id: c.id, profile_id: profile.id, nom: profile.nom_complet }));
   async function ajouterSeance() {
     const iso = datetimeLocalToISO(ses.debut);
@@ -561,21 +628,29 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
             <Pastille color={DOM_COULEUR[c.domaine]}>{S["dom_" + c.domaine]}</Pastille>
             <Pastille color={GREY}>{S["niv_" + c.niveau]}</Pastille>
             <Pastille color={GREY}>{S["mode_" + c.mode]}</Pastille>
-            {complet && <Pastille color={RED}>{S.cls_full}</Pastille>}
+            {complet && <Pastille color={RED}>{S.cls_full}{attente.length > 0 ? ` · ${S.cls_waiting.replace("{n}", attente.length)}` : ""}</Pastille>}
+            {c.publique && <Pastille color={TEAL}><Globe size={10} /> {S.cls_public_badge}</Pastille>}
+            {jeSuisInscrit && <Pastille color={TEAL}>✓ {S.registered}</Pastille>}
+            {enAttente && <Pastille color={AMBER}>{S.cls_rank.replace("{n}", rang)}</Pastille>}
           </div>
-          <p style={muted}>{S.cls_by.replace("{nom}", c.animateur_nom || "—")} · {S.cls_seats.replace("{n}", inscrits.length).replace("{c}", c.capacite ? ` / ${c.capacite}` : "")}{avisC.length > 0 && <> · <Etoiles n={moyenne} /> {S.cls_avg.replace("{n}", moyenne.toFixed(1)).replace("{c}", avisC.length)}</>}</p>
+          <p style={muted}>{S.cls_by.replace("{nom}", c.animateur_nom || "—")} · {S.cls_seats.replace("{n}", prises).replace("{c}", c.capacite ? ` / ${c.capacite}` : "")}{avisC.length > 0 && <> · <Etoiles n={moyenne} /> {S.cls_avg.replace("{n}", moyenne.toFixed(1)).replace("{c}", avisC.length)}</>}</p>
           {c.description && <p style={{ ...muted, whiteSpace: "pre-wrap", marginTop: 6 }}>{c.description}</p>}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-          {c.statut === "ouverte" && (!complet || jeSuisInscrit) && <Btn style={small} variant={jeSuisInscrit ? "outline" : undefined} onClick={inscrire}>{jeSuisInscrit ? S.cls_leave : S.cls_join}</Btn>}
+          {c.statut === "ouverte" && <Btn style={small} variant={jeSuisInscrit || enAttente ? "outline" : undefined} onClick={inscrire}>{jeSuisInscrit || enAttente ? S.cls_leave : complet ? S.cls_join_wait : S.cls_join}</Btn>}
           {gest && c.statut === "proposee" && <div style={{ display: "flex", gap: 6 }}><Btn style={small} onClick={() => statut("ouverte")}>{S.cls_open}</Btn><button style={linkBtn(RED)} onClick={() => statut("refusee")}>{S.cls_refuse}</button></div>}
           {anime && c.statut === "ouverte" && <button style={linkBtn(GREY)} onClick={() => statut("terminee")}>{S.cls_end}</button>}
           {anime && ["ouverte", "proposee"].includes(c.statut) && <button style={linkBtn(RED)} onClick={() => window.confirm(S.cls_cancel + " ?") && statut("annulee")}>{S.cls_cancel}</button>}
+          <span style={{ display: "flex", gap: 10 }}>
+            {anime && <button style={linkBtn(GREY)} onClick={onEdit}><Pencil size={12} /> {S.edit}</button>}
+            <button style={linkBtn(GREY)} title={S.report} onClick={() => signaler({ profile, type: "classe", id: c.id, apercu: c.titre, invite: S.report_prompt, merci: S.report_thanks }).catch((e) => alert(friendlyError(e, t)))}><Flag size={12} /></button>
+          </span>
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
         <button onClick={() => setOuvert(!ouvert)} style={linkBtn("var(--primary)")}>{ouvert ? S.par_close : `${S.cls_show} (${mesSeances.length})`}</button>
         {mesPresences.length > 0 && <Btn variant="outline" style={small} onClick={attestation}><Award size={13} /> {S.cls_attest}</Btn>}
+        {(jeSuisInscrit || anime) && mesSeances.some((s) => s.statut === "prevue") && <button style={linkBtn(TEAL)} onClick={() => icsSeances(mesSeances.filter((s) => s.statut === "prevue"))}><Calendar size={13} /> {S.ics_class}</button>}
       </div>
       {ouvert && (
         <div style={{ marginTop: 10 }}>
@@ -588,6 +663,7 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
                 <Pastille color={s.statut === "realisee" ? TEAL : GREY}>{S["ses_st_" + s.statut]}</Pastille>
                 {s.statut === "prevue" && c.lien_visio && (jeSuisInscrit || anime) && <a href={c.lien_visio} target="_blank" rel="noreferrer" style={{ ...linkBtn(TEAL), textDecoration: "none" }}><Video size={12} /> {S.ses_join}</a>}
                 {s.statut === "prevue" && c.lieu && <span style={{ color: GREY, display: "inline-flex", gap: 3, alignItems: "center" }}><MapPin size={12} /> {c.lieu}</span>}
+                {s.statut === "prevue" && (jeSuisInscrit || anime) && <button style={linkBtn(GREY)} title={S.ics_one} onClick={() => icsSeances([s])}><Calendar size={12} /> .ics</button>}
                 {anime && s.statut === "prevue" && (
                   <span style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
                     <button style={linkBtn(TEAL)} onClick={() => act(() => supabase.from("savoir_classe_seances").update({ statut: "realisee" }).eq("id", s.id))}>{S.ses_done}</button>
@@ -615,6 +691,9 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
             </div>
           )}
           {anime && inscrits.length > 0 && <p style={{ ...muted, marginTop: 6 }}><Users size={12} /> {S.cls_participants} : {inscrits.map((i) => i.nom).join(", ")}</p>}
+          {anime && attente.length > 0 && <p style={{ ...muted, marginTop: 4, color: AMBER }}>{S.cls_waitlist} : {attente.map((i, k) => `${k + 1}. ${i.nom}`).join(", ")}</p>}
+          {anime && publics.length > 0 && <p style={{ ...muted, marginTop: 4 }}><Globe size={12} /> {S.cls_public_regs} : {publics.map((i) => `${i.nom} (${i.courriel}${i.telephone ? `, ${i.telephone}` : ""})${i.statut === "attente" ? ` — ${S.waitlist}` : ""}`).join(" ; ")}</p>}
+          {(anime || jeSuisInscrit) && <SupportsClasse S={S} t={t} lang={lang} profile={profile} classe={c} anime={anime} supports={supports} seances={seances} onChanged={onChanged} />}
           {jeSuisInscrit && (
             <div style={{ background: "#FDF8EE", borderRadius: 8, padding: 10, marginTop: 10 }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 6 }}>{S.cls_rate}</div>
@@ -675,6 +754,7 @@ function QuestionCarte({ S, t, lang, profile, gest, q, reponses, onChanged }) {
                 {r.est_solution && <b style={{ color: TEAL }}>✓ {S.q_is_solution}</b>}
                 {peutSolution && <button style={linkBtn(TEAL)} onClick={() => solution(r)}>{r.est_solution ? "↺" : S.q_solution}</button>}
                 {gest && <button style={linkBtn(RED)} onClick={() => act(() => supabase.from("savoir_reponses").update({ masquee: !r.masquee }).eq("id", r.id))}>{S.q_hide}</button>}
+                {r.auteur_id !== profile.id && <button style={linkBtn(GREY)} title={S.report} onClick={() => signaler({ profile, type: "reponse", id: r.id, apercu: r.corps, invite: S.report_prompt, merci: S.report_thanks }).catch((e) => alert(friendlyError(e, t)))}><Flag size={11} /></button>}
               </div>
             </div>
           ))}
@@ -682,7 +762,10 @@ function QuestionCarte({ S, t, lang, profile, gest, q, reponses, onChanged }) {
             <input style={{ ...inputStyle, flex: 1 }} placeholder={S.q_answer_ph} value={txt} onChange={(e) => setTxt(e.target.value)} onKeyDown={(e) => e.key === "Enter" && repondre()} />
             <Btn style={small} disabled={!txt.trim()} onClick={repondre}><Send size={13} /> {S.q_answer}</Btn>
           </div>
-          {gest && <button style={{ ...linkBtn(RED), marginTop: 8 }} onClick={() => act(() => supabase.from("savoir_questions").update({ masquee: !q.masquee }).eq("id", q.id))}><EyeOff size={12} /> {S.q_hide}</button>}
+          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
+            {gest && <button style={linkBtn(RED)} onClick={() => act(() => supabase.from("savoir_questions").update({ masquee: !q.masquee }).eq("id", q.id))}><EyeOff size={12} /> {S.q_hide}</button>}
+            {q.auteur_id !== profile.id && <button style={linkBtn(GREY)} onClick={() => signaler({ profile, type: "question", id: q.id, apercu: q.titre, invite: S.report_prompt, merci: S.report_thanks }).catch((e) => alert(friendlyError(e, t)))}><Flag size={12} /> {S.report}</button>}
+          </div>
         </div>
       )}
     </Card>
@@ -716,6 +799,8 @@ function MentoratCarte({ S, t, lang, profile, x, mentor, messages, onChanged }) 
             <button style={linkBtn(RED)} onClick={() => act(() => supabase.from("savoir_mentorats_pro").update({ statut: "refuse" }).eq("id", x.id))}>{S.men_decline}</button>
           </>}
           {x.statut === "actif" && <button style={linkBtn(GREY)} onClick={() => window.confirm(S.men_end + " ?") && act(() => supabase.from("savoir_mentorats_pro").update({ statut: "termine" }).eq("id", x.id))}>{S.men_end}</button>}
+          {x.statut === "actif" && !x.suivi_demande && <button style={linkBtn(AMBER)} onClick={() => window.confirm(S.men_follow_confirm) && act(() => supabase.from("savoir_mentorats_pro").update({ suivi_demande: true, suivi_demande_par: profile.nom_complet }).eq("id", x.id))}>{S.men_follow}</button>}
+          {x.suivi_demande && <Pastille color={AMBER}>{S.men_followed}</Pastille>}
         </div>
       </div>
       {x.statut === "actif" && (
@@ -848,7 +933,7 @@ function attestationBenevolat(S, v, association, lang, t) {
   }).catch((e) => alert(friendlyError(e, t)));
 }
 
-function ImpactTab({ S, t, lang, association, d, jeunesse }) {
+function ImpactTab({ S, t, lang, association, d, jeunesse, profile, stats, onChanged }) {
   const j = jeunesse;
   const seancesR = (j.seances || []).filter((s) => s.statut === "realisee");
   const notesProg = seancesR.map((s) => s.progression).filter(Boolean);
@@ -921,6 +1006,7 @@ function ImpactTab({ S, t, lang, association, d, jeunesse }) {
           </div>
         ))}
       </Card>
+      <PilotagePlus S={S} t={t} lang={lang} profile={profile} d={d} stats={stats} onChanged={onChanged} />
     </div>
   );
 }
@@ -929,12 +1015,14 @@ function ImpactTab({ S, t, lang, association, d, jeunesse }) {
 // Composant principal
 // =====================================================================
 export default function CarrefourSavoir({ t, lang, profile, gest, association, jeunesse, onGoJeunesse }) {
-  const S = TXT[lang === "en" ? "en" : "fr"];
+  const S = { ...TXT[lang === "en" ? "en" : "fr"], ...TXT_PLUS[lang === "en" ? "en" : "fr"], ...TXT_EDIT[lang === "en" ? "en" : "fr"] };
   const [tab, setTab] = useState("accueil");
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
-  const [d, setD] = useState({ nbVues: 0, ressources: [], favoris: [], consultations: [], populaires: [], parcours: [], etapes: [], progressions: [], questions: [], reponses: [], classes: [], seances: [], inscriptions: [], presences: [], avis: [], mentorsPro: [], mentorats: [], messagesPro: [] });
-  const [profil, setProfil] = useState(lireProfil);
+  const [stats, setStats] = useState([]);
+  const [prefs, setPrefs] = useState({ publics: lireProfil(), domaines: [], notifications: true });
+  const [edition, setEdition] = useState(null); // { type: "res" | "par" | "cls", item }
+  const [d, setD] = useState({ supports: [], inscriptionsPubliques: [], quizNb: {}, signalements: [], nbVues: 0, ressources: [], favoris: [], consultations: [], populaires: [], parcours: [], etapes: [], progressions: [], questions: [], reponses: [], classes: [], seances: [], inscriptions: [], presences: [], avis: [], mentorsPro: [], mentorats: [], messagesPro: [] });
   const [q, setQ] = useState("");
   const [fDom, setFDom] = useState("");
   const [fPub, setFPub] = useState("");
@@ -966,9 +1054,19 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
       gest ? supabase.from("savoir_consultations").select("id", { count: "exact", head: true }).eq("association_id", aid) : Promise.resolve({ count: 0 }),
     ]);
     const nbVues = r.pop().count || 0;
+    // Compléments (sql/2026-10-10n) : tolérants si le script n'est pas encore exécuté.
+    const [sup, pub, qz, sig, pf, st] = await Promise.all([
+      sel("savoir_supports"), sel("savoir_inscriptions_publiques"), supabase.rpc("savoir_etapes_avec_quiz"),
+      sel("savoir_signalements").order("created_at", { ascending: false }),
+      supabase.from("savoir_profils").select("*").eq("association_id", aid).eq("profile_id", profile.id).maybeSingle(),
+      gest ? supabase.rpc("savoir_stats_ressources") : Promise.resolve({ data: [] }),
+    ]);
+    if (pf.data) setPrefs({ publics: pf.data.publics || [], domaines: pf.data.domaines || [], notifications: pf.data.notifications !== false });
+    setStats(st.data || []);
+    const extra = { supports: sup.data || [], inscriptionsPubliques: pub.data || [], quizNb: Object.fromEntries((qz.data || []).map((x) => [x.etape_id, x.nb])), signalements: sig.data || [] };
     if (r[0].error && (r[0].error.code === "42P01" || r[0].error.code === "PGRST205")) { setMissing(true); setLoading(false); return; }
     const [ressources, favoris, consultations, populaires, parcours, etapes, progressions, questions, reponses, classes, seances, inscriptions, presences, avis, mentorsPro, mentorats, messagesPro] = r.map((x) => x.data || []);
-    setD({ nbVues, ressources, favoris, consultations, populaires, parcours, etapes, progressions, questions, reponses, classes, seances, inscriptions, presences, avis, mentorsPro, mentorats, messagesPro });
+    setD({ ...extra, nbVues, ressources, favoris, consultations, populaires, parcours, etapes, progressions, questions, reponses, classes, seances, inscriptions, presences, avis, mentorsPro, mentorats, messagesPro });
     setMissing(false); setLoading(false);
   }, [profile.association_id, profile.id, gest]);
   useEffect(() => { load(); }, [load]);
@@ -978,10 +1076,16 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
 
   const favIds = new Set(d.favoris.filter((f) => f.profile_id === profile.id).map((f) => f.ressource_id));
   const faits = new Set(d.progressions.filter((p) => p.profile_id === profile.id).map((p) => p.etape_id));
-  const publiees = d.ressources.filter((r) => r.statut === "publiee");
+  const profil = prefs.publics;
+  const publiees = [...d.ressources.filter((r) => r.statut === "publiee"), ...ressourcesJeunesse(jeunesse?.ressources)];
   const visePublic = (r) => profil.length === 0 || (r.publics || []).some((p) => p === "tous" || profil.includes(p));
 
   async function ouvrir(r) {
+    if (r._jeunesse) {
+      if (r.storage_path) ouvrirFichier("jeunesse-ressources", r.storage_path).catch((e) => alert(friendlyError(e, t)));
+      else if (r.url) window.open(r.url, "_blank", "noopener");
+      return;
+    }
     supabase.from("savoir_consultations").insert({ association_id: profile.association_id, profile_id: profile.id, ressource_id: r.id }).then(() => {});
     if (r.storage_path) {
       const { data, error } = await supabase.storage.from("savoir-ressources").createSignedUrl(r.storage_path, 300);
@@ -1024,10 +1128,17 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
     if (error) { alert(friendlyError(error, t)); return; }
     setQForm({ domaine: qForm.domaine, titre: "", corps: "" }); setForm(null); load();
   }
+  // Profil d'apprenant : enregistré en base (notifications ciblées), avec
+  // repli local tant que le script 2026-10-10n n'est pas exécuté.
+  async function enregistrerPrefs(n) {
+    setPrefs(n);
+    try { window.localStorage.setItem("carrefour_profil", JSON.stringify(n.publics)); } catch { /* stockage indisponible */ }
+    const { error } = await supabase.from("savoir_profils").upsert({ association_id: profile.association_id, profile_id: profile.id, publics: n.publics, domaines: n.domaines, notifications: n.notifications, updated_at: new Date().toISOString() }, { onConflict: "association_id,profile_id" });
+    if (error && error.code !== "42P01" && error.code !== "PGRST205") { alert(friendlyError(error, t)); return false; }
+    return true;
+  }
   function choisirProfil(p) {
-    const n = profil.includes(p) ? profil.filter((x) => x !== p) : [...profil, p];
-    setProfil(n);
-    try { window.localStorage.setItem("carrefour_profil", JSON.stringify(n)); } catch { /* stockage indisponible */ }
+    enregistrerPrefs({ ...prefs, publics: profil.includes(p) ? profil.filter((x) => x !== p) : [...profil, p] });
   }
 
   const fq = foldText(q.trim());
@@ -1038,8 +1149,8 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
   const classesVisibles = d.classes.filter((c) => c.statut !== "refusee" && c.statut !== "annulee" || c.animateur_id === profile.id);
   const grille = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 };
   const TABS = [
-    ["accueil", S.tab_accueil, Compass], ["ressources", S.tab_ressources, BookOpen], ["parcours", S.tab_parcours, Route], ["classes", S.tab_classes, School],
-    ["questions", S.tab_questions, MessageCircleQuestion], ["mentorat", S.tab_mentorat, Briefcase], ...(gest ? [["impact", S.tab_impact, BarChart3]] : []),
+    ["accueil", S.tab_accueil, Compass], ["monespace", S.tab_monespace, User], ["ressources", S.tab_ressources, BookOpen], ["parcours", S.tab_parcours, Route], ["classes", S.tab_classes, School],
+    ["questions", S.tab_questions, MessageCircleQuestion], ["mentorat", S.tab_mentorat, Briefcase], ...(gest ? [["impact", S.tab_pilotage, BarChart3]] : []),
   ];
   const aValider = gest ? d.ressources.filter((r) => r.statut === "proposee").length + d.classes.filter((c) => c.statut === "proposee").length : 0;
   const demandesMentorat = d.mentorats.filter((x) => x.statut === "demande" && d.mentorsPro.find((m) => m.id === x.mentor_id)?.profile_id === profile.id).length;
@@ -1051,17 +1162,16 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
     return { p, n, total: ids.length };
   }).filter((x) => x.n > 0);
   const mesClasses = d.classes.filter((c) => d.inscriptions.some((i) => i.classe_id === c.id && i.profile_id === profile.id && i.statut === "inscrit"));
-  const prochaines = d.seances.filter((s) => s.statut === "prevue" && new Date(s.debut) > new Date() && mesClasses.some((c) => c.id === s.classe_id)).slice(0, 4);
   const benevoles = heuresBenevoles(d, jeunesse).filter((v) => v.profile_id === profile.id || (v.member_id && v.member_id === profile.member_id));
-  const historique = [...new Map(d.consultations.map((c) => [c.ressource_id, c])).values()].map((c) => publiees.find((r) => r.id === c.ressource_id)).filter(Boolean).slice(0, 5);
 
   return (
     <div>
       <div role="tablist" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
         {TABS.map(([id, label, I]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setForm(null); }}
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => { setTab(id); setForm(null); setEdition(null); }}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 999, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, background: tab === id ? "var(--primary)" : "#F1F2F4", color: tab === id ? "white" : "#3A404C" }}>
             <I size={14} /> {label}
+            {id === "impact" && d.signalements.some((x) => x.statut === "ouvert") && <span style={{ background: RED, color: "white", borderRadius: 999, fontSize: 11, padding: "0 6px" }}>{d.signalements.filter((x) => x.statut === "ouvert").length}</span>}
             {((id === "ressources" || id === "classes") && aValider > 0) || (id === "mentorat" && demandesMentorat > 0)
               ? <span style={{ background: RED, color: "white", borderRadius: 999, fontSize: 11, padding: "0 6px" }}>{id === "mentorat" ? demandesMentorat : id === "ressources" ? d.ressources.filter((r) => r.statut === "proposee").length : d.classes.filter((c) => c.statut === "proposee").length}</span> : null}
           </button>
@@ -1102,37 +1212,11 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
                   </button>
                 ))}
               </div>
-              <Card style={{ padding: 16 }}>
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>{S.my_space}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: GREY, marginBottom: 6 }}>⭐ {S.my_favs}</div>
-                    {publiees.filter((r) => favIds.has(r.id)).slice(0, 6).map((r) => <p key={r.id} style={{ margin: "0 0 4px" }}><button style={linkBtn("var(--primary)")} onClick={() => ouvrir(r)}>{r.titre}</button></p>)}
-                    {favIds.size === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.none}</p>}
-                    {historique.length > 0 && <div style={{ fontSize: 11.5, color: GREY, marginTop: 6 }}>🕘 {historique.map((r) => r.titre).join(" · ")}</div>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: GREY, marginBottom: 6 }}>🧭 {S.my_paths}</div>
-                    {mesParcours.map(({ p, n, total }) => (
-                      <div key={p.id} style={{ marginBottom: 6, cursor: "pointer" }} onClick={() => setTab("parcours")}>
-                        <div style={{ fontSize: 12.5 }}>{p.titre} <span style={{ color: GREY }}>({n}/{total})</span></div>
-                        <div style={{ height: 5, background: "#EEF0F3", borderRadius: 999 }}><div style={{ width: `${total ? (n / total) * 100 : 0}%`, height: "100%", background: n === total ? TEAL : "var(--primary)", borderRadius: 999 }} /></div>
-                      </div>
-                    ))}
-                    {mesParcours.length === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.none}</p>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: GREY, marginBottom: 6 }}>🏫 {S.my_classes}</div>
-                    {prochaines.map((s) => <p key={s.id} style={{ ...muted, marginBottom: 4 }}><Calendar size={11} /> {formatEventDateTime(s.debut, lang)} — {d.classes.find((c) => c.id === s.classe_id)?.titre}</p>)}
-                    {prochaines.length === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.none}</p>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: GREY, marginBottom: 6 }}>🏅 {S.my_attest}</div>
-                    {benevoles.map((v) => <p key={v.cle} style={{ margin: "0 0 4px" }}><button style={linkBtn(TEAL)} onClick={() => attestationBenevolat(S, v, association, lang, t)}><Award size={12} /> {S.att_ben_title.charAt(0) + S.att_ben_title.slice(1).toLowerCase()} — {heures(v.minutes)} h</button></p>)}
-                    {mesParcours.filter((x) => x.n === x.total).map(({ p }) => <p key={p.id} style={{ margin: "0 0 4px" }}><button style={linkBtn(TEAL)} onClick={() => setTab("parcours")}><Award size={12} /> {p.titre}</button></p>)}
-                    {benevoles.length === 0 && !mesParcours.some((x) => x.n === x.total) && <p style={{ ...muted, fontStyle: "italic" }}>{S.none}</p>}
-                  </div>
-                </div>
+              <Card style={{ padding: 14, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", cursor: "pointer" }} onClick={() => setTab("monespace")}>
+                <User size={18} color="var(--primary)" />
+                <b style={{ fontSize: 14 }}>{S.tab_monespace}</b>
+                <span style={{ fontSize: 12.5, color: GREY }}>⭐ {favIds.size} · 🧭 {mesParcours.length} · 🏫 {mesClasses.length} · 🏅 {benevoles.reduce((a, v) => a + v.minutes, 0) > 0 ? `${heures(benevoles.reduce((a, v) => a + v.minutes, 0))} h` : 0}</span>
+                <span style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 700, color: "var(--primary)" }}>{S.go} →</span>
               </Card>
               {publiees.filter(visePublic).length > 0 && (
                 <div>
@@ -1155,6 +1239,8 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
         </div>
       )}
 
+      {tab === "monespace" && <MonEspaceTab S={S} t={t} lang={lang} profile={profile} association={association} d={d} publiees={publiees} favIds={favIds} faits={faits} benevoles={benevoles} prefs={prefs} onSavePrefs={enregistrerPrefs} onOpen={ouvrir} goTab={setTab} />}
+
       {tab === "ressources" && (
         <div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
@@ -1169,6 +1255,7 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
           </div>
           {gest && PACK.some((p) => !d.ressources.some((r) => r.url === p[1])) && <button style={{ ...linkBtn(TEAL), marginBottom: 12 }} onClick={importerPack}><Sparkles size={13} /> {S.pack.replace("{n}", PACK.filter((p) => !d.ressources.some((r) => r.url === p[1])).length)}</button>}
           {form === "res" && <RessourceForm S={S} t={t} profile={profile} gest={gest} onCancel={() => setForm(null)} onDone={() => { setForm(null); load(); }} />}
+          {edition?.type === "res" && <RessourceForm key={edition.item.id} S={S} t={t} profile={profile} gest={gest} initial={edition.item} onCancel={() => setEdition(null)} onDone={() => { setEdition(null); load(); }} />}
           {gest && d.ressources.some((r) => r.statut === "proposee") && (
             <Card style={{ padding: 14, marginBottom: 14, borderLeft: `4px solid ${AMBER}` }}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>{S.res_pending}</div>
@@ -1184,7 +1271,9 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
           )}
           <p style={{ ...muted, marginBottom: 10 }}>{S.nb_res.replace("{n}", ressourcesVisibles.length)}</p>
           {ressourcesVisibles.length === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.res_empty}</p>}
-          <div style={grille}>{ressourcesVisibles.map((r) => <RessourceCarte key={r.id} S={S} r={r} fav={favIds.has(r.id)} onFav={() => basculerFav(r)} onOpen={() => ouvrir(r)} canDelete={gest || r.depose_par === profile.id} onDelete={() => supprimer(r)} />)}</div>
+          <div style={grille}>{ressourcesVisibles.map((r) => <RessourceCarte key={r.id} S={S} r={r} fav={favIds.has(r.id)} onFav={() => basculerFav(r)} onOpen={() => ouvrir(r)} canDelete={gest || r.depose_par === profile.id} onDelete={() => supprimer(r)}
+            canEdit={gest || r.depose_par === profile.id} onEdit={() => { setEdition({ type: "res", item: r }); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            onReport={() => signaler({ profile, type: "ressource", id: r.id, apercu: r.titre, invite: S.report_prompt, merci: S.report_thanks }).catch((e) => alert(friendlyError(e, t)))} />)}</div>
         </div>
       )}
 
@@ -1192,8 +1281,10 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
         <div style={{ display: "grid", gap: 12 }}>
           {gest && form !== "par" && <div><Btn style={small} onClick={() => setForm("par")}><Plus size={13} /> {S.par_new}</Btn></div>}
           {form === "par" && <ParcoursForm S={S} t={t} profile={profile} ressources={d.ressources} onCancel={() => setForm(null)} onDone={() => { setForm(null); load(); }} />}
+          {edition?.type === "par" && <ParcoursForm key={edition.item.p.id} S={S} t={t} profile={profile} ressources={d.ressources} initial={edition.item} onCancel={() => setEdition(null)} onDone={() => { setEdition(null); load(); }} />}
           {parcoursPublies.length === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.par_empty}</p>}
-          {parcoursPublies.map((p) => <ParcoursCarte key={p.id} S={S} t={t} lang={lang} profile={profile} gest={gest} association={association} p={p} etapes={d.etapes} faits={faits} ressources={d.ressources} onOpenRes={ouvrir} onChanged={load} />)}
+          {parcoursPublies.map((p) => <ParcoursCarte key={p.id} S={S} t={t} lang={lang} profile={profile} gest={gest} association={association} p={p} etapes={d.etapes} faits={faits} ressources={d.ressources} quizNb={d.quizNb} onOpenRes={ouvrir}
+            onEdit={() => { setEdition({ type: "par", item: { p, etapes: d.etapes.filter((e) => e.parcours_id === p.id).sort((a, b) => a.ordre - b.ordre) } }); window.scrollTo({ top: 0, behavior: "smooth" }); }} onChanged={load} />)}
         </div>
       )}
 
@@ -1201,8 +1292,10 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
         <div style={{ display: "grid", gap: 12 }}>
           {form !== "cls" && <div><Btn style={small} onClick={() => setForm("cls")}><Plus size={13} /> {gest ? S.cls_new : S.cls_propose}</Btn></div>}
           {form === "cls" && <ClasseForm S={S} t={t} profile={profile} gest={gest} onCancel={() => setForm(null)} onDone={() => { setForm(null); load(); }} />}
+          {edition?.type === "cls" && <ClasseForm key={edition.item.id} S={S} t={t} profile={profile} gest={gest} initial={edition.item} onCancel={() => setEdition(null)} onDone={() => { setEdition(null); load(); }} />}
           {classesVisibles.length === 0 && <p style={{ ...muted, fontStyle: "italic" }}>{S.cls_empty}</p>}
-          {classesVisibles.map((c) => <ClasseCarte key={c.id} S={S} t={t} lang={lang} profile={profile} gest={gest} association={association} c={c} seances={d.seances} inscriptions={d.inscriptions} presences={d.presences} avis={d.avis} onChanged={load} />)}
+          {classesVisibles.map((c) => <ClasseCarte key={c.id} S={S} t={t} lang={lang} profile={profile} gest={gest} association={association} c={c} seances={d.seances} inscriptions={d.inscriptions} inscriptionsPubliques={d.inscriptionsPubliques} presences={d.presences} avis={d.avis} supports={d.supports}
+            onEdit={() => { setEdition({ type: "cls", item: c }); window.scrollTo({ top: 0, behavior: "smooth" }); }} onChanged={load} />)}
         </div>
       )}
 
@@ -1229,7 +1322,7 @@ export default function CarrefourSavoir({ t, lang, profile, gest, association, j
       )}
 
       {tab === "mentorat" && <MentoratTab S={S} t={t} lang={lang} profile={profile} d={d} onChanged={load} />}
-      {tab === "impact" && gest && <ImpactTab S={S} t={t} lang={lang} association={association} d={d} jeunesse={jeunesse} />}
+      {tab === "impact" && gest && <ImpactTab S={S} t={t} lang={lang} association={association} d={d} jeunesse={jeunesse} profile={profile} stats={stats} onChanged={load} />}
     </div>
   );
 }

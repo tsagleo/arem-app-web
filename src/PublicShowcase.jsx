@@ -21,6 +21,7 @@ import { supabase } from "./supabaseClient";
 import { Section, Container, Card, Btn, Field, useLang, LanguageSwitcher, TextSizeControl, money, friendlyError, inputStyle, BG, TEAL, TEAL_LIGHT, RED, formatEventDateTime } from "./shared";
 import { badgeUrl, randomUuid, qrDataUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 import { exporterProgrammePdf, txtEvPlus } from "./evenementsPlus";
+import { ClassesPubliques } from "./CarrefourPublic.jsx";
 
 
 function goToLogin() {
@@ -283,6 +284,9 @@ function ShowcasePage({ slug }) {
             ))}
           </div>
         )}
+
+        {/* Classes du Carrefour du savoir ouvertes au public (sql/2026-10-10n) */}
+        <ClassesPubliques slug={slug} lang={lang} />
 
         <Card style={{ maxWidth: 480 }}>
           <h3 style={{ fontSize: 15, marginBottom: 4 }}>{t("pub_join_title")}</h3>

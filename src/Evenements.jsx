@@ -10,6 +10,7 @@ import {
 import { txtEvPlus, statsBenevolat, retraitSurDemande, exporterProgrammePdf, downloadMemberBadgesPdf, exporterAttestationsPdf } from "./evenementsPlus";
 import { badgeUrl, downloadBadgesPdf, safeFileName } from "./badgesEvenement";
 import { supabase } from "./supabaseClient";
+import { AgendaClasses } from "./CarrefourPublic.jsx";
 import { Section, Container, Card, Btn, Field, Table, td, inputStyle, money, useLang, friendlyError, RED, whatsappShareUrl, Pill, TEAL, TEAL_LIGHT, GOLD_LIGHT, foldText, toDatetimeLocal, datetimeLocalToISO } from "./shared";
 
 const STAR_COLOR = "#F5A623";
@@ -2310,6 +2311,8 @@ export default function Evenements({ profile, isBureau, association }) {
           <p style={{ color: "#686F7D", fontStyle: "italic", padding: "20px 4px" }}>{listFilter === "avenir" ? t("ev_no_upcoming") : ""}</p>
         )}
       </div>
+      {/* Séances des classes du Carrefour du savoir (2026-10-10) */}
+      {listFilter === "avenir" && <AgendaClasses profile={profile} lang={lang} />}
 
       {editingEvent && (
         <EditEventModal event={editingEvent} onClose={() => setEditingEvent(null)} onSave={updateEvent} t={t} association={association} />
