@@ -127,7 +127,7 @@ const TXT = {
     par_steps: "Étapes", par_step_title: "Titre de l'étape", par_step_instr: "Consigne", par_step_res: "Ressource liée (facultatif)", par_step_url: "Ou lien",
     par_add_step: "Ajouter une étape", par_save: "Publier le parcours", par_empty: "Aucun parcours pour le moment.", par_progress: "{a} / {b} étapes",
     par_done: "Fait", par_todo: "À faire", par_certif: "Mon certificat de parcours", par_archive: "Archiver", par_complete: "Parcours terminé ! Bravo.",
-    par_open: "Voir les étapes", par_close: "Masquer",
+    par_open: "Voir les étapes", par_close: "Masquer", cls_show: "Voir les séances",
     // Classes
     cls_new: "Créer une classe", cls_propose: "Proposer une classe", cls_title: "Titre", cls_desc: "Description et programme", cls_cap: "Places (facultatif)",
     cls_mode: "Format", mode_distance: "À distance (visio)", mode_presentiel: "En personne", mode_hybride: "Hybride", cls_place: "Lieu", cls_link: "Lien de visio",
@@ -193,7 +193,7 @@ const TXT = {
     par_steps: "Steps", par_step_title: "Step title", par_step_instr: "Instructions", par_step_res: "Linked resource (optional)", par_step_url: "Or link",
     par_add_step: "Add a step", par_save: "Publish pathway", par_empty: "No pathway yet.", par_progress: "{a} / {b} steps",
     par_done: "Done", par_todo: "To do", par_certif: "My pathway certificate", par_archive: "Archive", par_complete: "Pathway completed! Well done.",
-    par_open: "Show steps", par_close: "Hide",
+    par_open: "Show steps", par_close: "Hide", cls_show: "Show sessions",
     cls_new: "Create a class", cls_propose: "Propose a class", cls_title: "Title", cls_desc: "Description and programme", cls_cap: "Seats (optional)",
     cls_mode: "Format", mode_distance: "Online (video)", mode_presentiel: "In person", mode_hybride: "Hybrid", cls_place: "Place", cls_link: "Video link",
     cls_save: "Save", cls_prop_note: "Your class will open for registration once a coordinator approves it.",
@@ -574,7 +574,7 @@ function ClasseCarte({ S, t, lang, profile, gest, association, c, seances, inscr
         </div>
       </div>
       <div style={{ display: "flex", gap: 12, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={() => setOuvert(!ouvert)} style={linkBtn("var(--primary)")}>{ouvert ? S.par_close : `${S.par_open} (${mesSeances.length})`}</button>
+        <button onClick={() => setOuvert(!ouvert)} style={linkBtn("var(--primary)")}>{ouvert ? S.par_close : `${S.cls_show} (${mesSeances.length})`}</button>
         {mesPresences.length > 0 && <Btn variant="outline" style={small} onClick={attestation}><Award size={13} /> {S.cls_attest}</Btn>}
       </div>
       {ouvert && (
