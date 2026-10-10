@@ -216,7 +216,7 @@ const TXT = {
     accord: "Accord obtenu (ex. AG du 12/11, accord écrit des membres…)",
     bilan_validate: "Valider le bilan (double contrôle)",
     confirm_bilan: "Valider ce bilan ? Les parts réelles seront fixées et la dépense enregistrée sur le compte dédié.",
-    bilan_done: "Bilan validé le {date}.",
+    bilan_done: "Bilan validé le {date}",
     // Exports
     export_pdf: "Fiche PDF", export_csv: "CSV",
     pdf_sheet: "Fiche d'achat groupé",
@@ -414,7 +414,7 @@ const TXT = {
     accord: "Agreement obtained (e.g. general meeting of 11/12, members' written consent…)",
     bilan_validate: "Validate the report (two-person check)",
     confirm_bilan: "Validate this report? Actual shares will be set and the expense recorded in the dedicated account.",
-    bilan_done: "Report validated {date}.",
+    bilan_done: "Report validated {date}",
     export_pdf: "PDF sheet", export_csv: "CSV",
     pdf_sheet: "Group purchase sheet",
     pdf_releve: "Statement — group buying",
@@ -459,7 +459,8 @@ const errTxt = (e, t) => (e?.code === "P0001" && e.message ? e.message : friendl
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const fmtQ = (n) => (Number(n) || 0).toLocaleString("fr-CA", { maximumFractionDigits: 3 });
 const fill = (s, vars) => Object.entries(vars).reduce((acc, [k, v]) => acc.replaceAll(`{${k}}`, String(v)), s);
-const uniteDe = (L, a) => L[`u_${a.unite}`] || a.unite;
+// Unité au pluriel dès que la quantité dépasse 1 (« 2 pièces »).
+const uniteDe = (L, a, q) => (Number(q) > 1 && L[`u_${a.unite}_pl`]) || L[`u_${a.unite}`] || a.unite;
 
 // ---------- Raison d'un complément ou d'un remboursement (2026-10-10) ----------
 // Demandé par l'utilisateur : « mettre l'intitulé qui génère ces frais ».
@@ -615,7 +616,7 @@ function Progression({ L, a }) {
         <div style={{ width: `${pct}%`, height: "100%", background: atteint ? TEAL : AMBER, transition: "width .4s" }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 6, fontSize: 12, color: MUTED, marginTop: 4 }}>
-        <span>{fill(L.progress, { total: fmtQ(total), seuil: fmtQ(seuil), u })} {atteint && "✓"}</span>
+        <span>{fill(L.progress, { total: fmtQ(total), seuil: fmtQ(seuil), u: uniteDe(L, a, seuil) })} {atteint && "✓"}</span>
         <span>{fill(L.subscribers, { n: a.nb_souscripteurs || 0 })}{a.stock_max ? ` · ${fill(L.stock, { n: fmtQ(a.stock_max), u })}` : ""}</span>
       </div>
     </div>
@@ -771,7 +772,7 @@ function AchatCarte({ L, a, devise, lang, onOpen, maSous }) {
           {["ouvert", "confirme", "commande", "propose"].includes(a.statut) && <Progression L={L} a={a} />}
           <div style={{ fontSize: 12, color: MUTED }}>
             {a.statut === "ouvert" && fill(L.deadline, { date: formatEventDateTime(a.date_limite, lang) })}
-            {maSous && maSous.statut !== "retire" && <span style={{ marginLeft: 8, color: TEAL, fontWeight: 700 }}>· {fill(L.my_sub, { q: fmtQ(maSous.quantite_demandee), u: uniteDe(L, a) })}</span>}
+            {maSous && maSous.statut !== "retire" && <span style={{ marginLeft: 8, color: TEAL, fontWeight: 700 }}>· {fill(L.my_sub, { q: fmtQ(maSous.quantite_demandee), u: uniteDe(L, a, maSous.quantite_demandee) })}</span>}
           </div>
         </div>
       </div>
@@ -839,7 +840,7 @@ function TableMouvements({ L, t, lang, mouvements: tous, devise, achatsParId, pr
               <div style={ligneBtns}>
                 {m.preuve_path && (isBureau || gerer) && <Btn variant="outline" style={petitBtn} onClick={() => voirPreuve(m)}><Eye size={12} /> {L.see_proof}</Btn>}
                 {m.statut === "declare" && gerer && <Btn style={petitBtn} onClick={() => onAction("achats_confirmer_reception", { p_mvt: m.id })}>{L.confirm_receipt}</Btn>}
-                {m.statut === "recu" && isBureau && (m.recu_par === profile.id || m.member_id === profile.member_id
+                {m.statut === "recu" && isBureau && (m.recu_par === profile.id || m.member_id === profile.member_id || gerer
                   ? <span style={{ fontSize: 11.5, color: AMBER }}><Lock size={11} /> {L.other_must_validate}</span>
                   : <Btn style={petitBtn} onClick={() => onAction("achats_valider_mouvement", { p_mvt: m.id })}><ShieldCheck size={12} /> {L.validate}</Btn>)}
                 {(m.statut === "declare" || m.statut === "recu") && gerer && (
@@ -911,14 +912,14 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
       <h3 style={{ margin: "0 0 10px", fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}><Wallet size={17} /> {L.my_share}</h3>
       {s.statut === "non_retenu" && <p style={{ fontSize: 13.5 }}>{L.not_retained}</p>}
       {s.statut === "desiste" && <p style={{ fontSize: 13.5, color: RED }}>{fill(L.desiste, { m: s.motif || "" })}</p>}
-      {s.statut === "retenu" && <p style={{ fontSize: 13.5, margin: "0 0 8px" }}>{fill(L.my_alloc, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a) })}</p>}
+      {s.statut === "retenu" && <p style={{ fontSize: 13.5, margin: "0 0 8px" }}>{fill(L.my_alloc, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a, s.quantite_attribuee) })}</p>}
       {/* Retrait de la marchandise (2026-10-10) : visible dans l'espace du membre. */}
       {s.statut === "retenu" && s.remis_le && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", background: TEAL_LIGHT, border: `1.5px solid ${TEAL}`, borderRadius: 10, padding: "10px 12px", margin: "0 0 10px" }}>
           <PackageCheck size={20} color={TEAL} />
           <div>
-            <div style={{ fontWeight: 700, color: TEAL, fontSize: 14 }}>{fill(L.rt_done, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a), date: formatEventDateTime(s.remis_le, "fr") })}</div>
-            <div style={{ fontSize: 12, color: MUTED }}>{s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : ""}{s.remis_par_nom ? ` · ${fill(L.rt_by, { nom: s.remis_par_nom })}` : ""}</div>
+            <div style={{ fontWeight: 700, color: TEAL, fontSize: 14 }}>{fill(L.rt_done, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a, s.quantite_attribuee), date: formatEventDateTime(s.remis_le, "fr") })}</div>
+            <div style={{ fontSize: 12, color: MUTED }}>{[s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : "", s.remis_par_nom ? fill(L.rt_by, { nom: s.remis_par_nom }) : ""].filter(Boolean).join(" · ")}</div>
           </div>
         </div>
       )}
@@ -1073,9 +1074,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
     if (res.ok && !res.deja_remis) { bip(true); setProcuration(""); }
     else if (!res.ok) bip(false);
     if (!res.ok) setRemise({ tone: "warn", text: res.raison === "carte_inconnue" ? L.unknown_card : L.no_share });
-    else if (res.deja_remis && Date.now() - new Date(res.remis_le).getTime() < 120000) setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) }));
+    else if (res.deja_remis && Date.now() - new Date(res.remis_le).getTime() < 120000) setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u: uniteDe(L, a, res.quantite) }) }));
     else if (res.deja_remis) setRemise(vu({ tone: "warn", text: `${res.member_nom} — ${fill(L.handover_again, { date: formatEventDateTime(res.remis_le, lang), nom: res.remis_par_nom || "" })}` }));
-    else setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) }));
+    else setRemise(vu({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u: uniteDe(L, a, res.quantite) }) }));
   }
 
   // Aperçu du bilan (même calcul que achats_valider_bilan)
@@ -1144,10 +1145,16 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
               <StatutPill L={L} statut={a.statut} />
             </div>
             <Prix L={L} a={a} devise={devise} />
+            {a.bilan_valide_le && Number(a.total_attribue) > 0 && (() => {
+              const unitaire = r2((Number(a.cout_reel_produits) + Number(a.frais_communs_reels)) / Number(a.total_attribue));
+              const eco = a.prix_detail ? Math.round((1 - unitaire / Number(a.prix_detail)) * 100) : null;
+              return <div style={{ fontSize: 13, fontWeight: 700, color: TEAL, margin: "4px 0" }}>{fill(L.cout_reel_unit, { m: money(unitaire, devise), u: uniteDe(L, a) })}{eco !== null && ` · ${fill(L.eco_reelle, { pct: eco })}`}</div>;
+            })()}
             {a.description && <p style={{ fontSize: 13.5, whiteSpace: "pre-wrap" }}>{a.description}</p>}
             {["ouvert", "confirme", "commande", "propose"].includes(a.statut) && <Progression L={L} a={a} />}
             <div style={{ fontSize: 12.5, color: MUTED, display: "flex", flexDirection: "column", gap: 2 }}>
-              <span>{fill(L.deadline, { date: formatEventDateTime(a.date_limite, lang) })}</span>
+              {["sondage", "propose", "ouvert"].includes(a.statut) && <span>{fill(L.deadline, { date: formatEventDateTime(a.date_limite, lang) })}</span>}
+              {a.statut === "cloture" && a.cloture_le && <span>{fill(L.closed_on, { date: formatEventDateTime(a.cloture_le, lang) })}</span>}
               {a.fournisseur && <span>{fill(L.supplier, { f: a.fournisseur })} <NoteFournisseur L={L} fournisseur={a.fournisseur} /></span>}
               {a.porteur_nom && <span>{fill(L.carrier, { nom: a.porteur_nom })}</span>}
               {Number(a.frais_estimes) > 0 && <span>{fill(L.est_fees, { m: money(a.frais_estimes, devise) })}</span>}
@@ -1180,7 +1187,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
           <ol style={{ fontSize: 13, margin: "0 0 10px", paddingLeft: 20, color: "#3D4350" }}>
             {L.charte.map((c) => <li key={c} style={{ marginBottom: 3 }}>{c}</li>)}
           </ol>
-          {maSous && maSous.statut === "inscrit" && <p style={{ fontSize: 13.5, fontWeight: 700, color: TEAL }}>{fill(L.my_sub, { q: fmtQ(maSous.quantite_demandee), u })}</p>}
+          {maSous && maSous.statut === "inscrit" && <p style={{ fontSize: 13.5, fontWeight: 700, color: TEAL }}>{fill(L.my_sub, { q: fmtQ(maSous.quantite_demandee), u: uniteDe(L, a, maSous.quantite_demandee) })}</p>}
           <div style={{ ...ligneBtns, alignItems: "flex-end" }}>
             <div style={{ width: 160 }}>
               <Field label={fill(L.qty, { u })}>
@@ -1216,6 +1223,16 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       <SuiviPanel L={L} t={t} lang={lang} a={a} gestionnaire={gestionnaire} onReload={onReload} />
       <AvisPanel L={L} t={t} a={a} maSous={maSous} onReload={onReload} />
       {!gestionnaire && <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire={false} onReload={onReload} />}
+
+      {/* Transparence (2026-10-10) : chaque souscripteur voit le bilan réel et la facture. */}
+      {!gestionnaire && !isBureau && maSous?.statut === "retenu" && a.bilan_valide_le && (
+        <Card style={{ marginBottom: 16 }}>
+          <h4 style={{ margin: "0 0 6px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><BarChart3 size={15} /> {L.bilan_title}</h4>
+          <p style={{ fontSize: 13, margin: "0 0 4px" }}>{fill(L.bilan_entered, { date: formatEventDateTime(a.bilan_saisi_le, lang), p: money(a.cout_reel_produits, devise), f: money(a.frais_communs_reels, devise), t: money(r2(Number(a.cout_reel_produits) + Number(a.frais_communs_reels)), devise) })}</p>
+          <p style={{ fontSize: 12.5, color: MUTED, margin: 0 }}>{fill(L.bilan_done, { date: formatEventDateTime(a.bilan_valide_le, lang) })}{a.bilan_valide_par_nom ? ` ${fill(L.bilan_by, { nom: a.bilan_valide_par_nom })}` : ""}</p>
+          {a.facture_path && <FacturePanel L={L} t={t} a={a} gestionnaire={false} profile={profile} onReload={onReload} />}
+        </Card>
+      )}
 
       {/* Gestion (bureau ou porteur) */}
       {(gestionnaire || isBureau) && (
@@ -1293,6 +1310,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
             <div style={pleinEcran ? { position: "fixed", inset: 0, zIndex: 1000, background: "white", padding: 20, overflowY: "auto" } : { marginTop: 16 }}>
               <h4 style={{ margin: "0 0 6px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><PackageCheck size={15} /> {L.handover_title}
                 <span style={{ fontWeight: 400, color: MUTED, fontSize: 12.5 }}>— {fill(L.handed_count, { n: retenus.filter((s) => s.remis_le).length, t: retenus.length })}</span></h4>
+              {retenus.length > 0 && retenus.every((x) => x.remis_le) ? <p style={{ fontSize: 13.5, fontWeight: 700, color: TEAL, margin: "4px 0" }}>✓ {L.all_handed}</p> : <>
               <div style={{ ...ligneBtns, marginBottom: 8 }}>
                 <Btn variant={scan ? "outline" : "primary"} style={petitBtn} onClick={() => { setScan((v) => !v); setRemise(null); }}><QrCode size={13} /> {scan ? L.scan_stop : L.scan_start}</Btn>
                 <Btn variant="outline" style={petitBtn} onClick={() => setPleinEcran((v) => !v)}>{pleinEcran ? L.rm_exit : `⛶ ${L.rm_full}`}</Btn>
@@ -1300,6 +1318,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
               <div style={{ maxWidth: 340 }}><Field label={L.rm_proxy}><input style={inputStyle} placeholder={L.rm_proxy_ph} value={procuration} onChange={(e) => setProcuration(e.target.value)} /></Field></div>
               <QrScanner active={scan} L={L} onDecode={(token) => remettre({ p_token: token })} />
               <RemiseVisuelle L={L} remise={remise} />
+              </>}
             </div>
           )}
 
@@ -1376,7 +1395,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
               {a.statut === "cloture" ? (
                 <p style={{ fontSize: 13.5 }}>
                   {fill(L.bilan_entered, { date: formatEventDateTime(a.bilan_saisi_le, lang), p: money(a.cout_reel_produits, devise), f: money(a.frais_communs_reels, devise), t: money(totalReel, devise) })}<br />
-                  {fill(L.bilan_done, { date: formatEventDateTime(a.bilan_valide_le, lang) })}
+                  {fill(L.bilan_done, { date: formatEventDateTime(a.bilan_valide_le, lang) })}{a.bilan_valide_par_nom ? ` ${fill(L.bilan_by, { nom: a.bilan_valide_par_nom })}` : ""}
                   {a.accord_depassement && <><br />{L.accord} : {a.accord_depassement}</>}
                 </p>
               ) : (
@@ -1407,7 +1426,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                           <Field label={L.accord}><input style={inputStyle} value={accord} onChange={(e) => setAccord(e.target.value)} /></Field>
                         </div>
                       )}
-                      {isBureau && (a.bilan_saisi_par === profile.id
+                      {isBureau && (a.bilan_saisi_par === profile.id || gestionnaire
                         ? <p style={{ fontSize: 12.5, color: AMBER, marginTop: 10 }}><Lock size={12} /> {L.other_must_validate}</p>
                         : <div style={{ marginTop: 10 }}><Btn onClick={() => action("achats_valider_bilan", { p_id: a.id, p_accord: accord || null }, L.confirm_bilan)} disabled={busy || (depasse && !accord.trim())}><ShieldCheck size={14} /> {L.bilan_validate}</Btn></div>)}
                     </div>
@@ -1617,7 +1636,7 @@ export default function AchatsGroupes({ profile, isBureau, association }) {
   const parId = Object.fromEntries(achats.map((a) => [a.id, a]));
   const peutGerer = (a) => !!a && (a.porteur_member_id ? !!profile.member_id && a.porteur_member_id === profile.member_id : a.propose_par === profile.id || profile.role === "bureau_president");
   // Le porteur confirme « reçu » ; un autre membre du bureau valide.
-  const aControler = mouvements.filter((m) => m.achat_id && ((m.statut === "declare" && peutGerer(parId[m.achat_id])) || (m.statut === "recu" && isBureau && m.recu_par !== profile.id && m.member_id !== profile.member_id)));
+  const aControler = mouvements.filter((m) => m.achat_id && ((m.statut === "declare" && peutGerer(parId[m.achat_id])) || (m.statut === "recu" && isBureau && m.recu_par !== profile.id && m.member_id !== profile.member_id && !peutGerer(parId[m.achat_id]))));
   const achatSel = selection ? parId[selection] : null;
   const onglets = [["achats", L.tab_achats], ["releve", L.tab_releve], ...(isBureau ? [["bilan", L.tab_bilan]] : [])];
 

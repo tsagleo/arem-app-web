@@ -3,6 +3,9 @@
 export const TXT_ACHATS_PLUS = {
   fr: {
     st_sondage: "Sondage d'intérêt",
+    u_piece_pl: "pièces", u_litre_pl: "litres", u_lot_pl: "lots", u_kg_pl: "kg", u_m3_pl: "m³",
+    closed_on: "Clôturé le {date}", cout_reel_unit: "Coût réel : {m} / {u}", eco_reelle: "économie réelle {pct} %",
+    bilan_by: "par {nom}", all_handed: "Toutes les parts ont été remises.",
     controle_only: "Vous n'êtes pas le porteur de cet achat ({nom}) : vous pouvez tout consulter et valider les paiements et le bilan (double contrôle), mais seul le porteur peut le modifier ou le faire avancer.",
     f_sec1: "1. Le produit ou service", f_sec2: "2. Prix et quantités", f_sec3: "3. Organisation",
     f_sondage: "Commencer par un sondage d'intérêt (sans engagement)", f_sondage_help: "Les membres indiquent d'abord la quantité qui les intéresse ; vous comparez les devis, puis vous ouvrez les souscriptions.",
@@ -35,7 +38,7 @@ export const TXT_ACHATS_PLUS = {
     n_livre_g: "Remettez les parts (scan de la carte), puis saisissez le bilan au coût réel.",
     n_livre_m: "Récupérez votre part en présentant votre carte de membre.",
     n_bilan_attente: "Bilan saisi : un AUTRE membre du bureau doit le valider.",
-    n_cloture: "Achat clôturé. Pensez à donner votre avis sur le fournisseur.",
+    n_cloture: "Achat terminé ✓ Tout est réglé et remis. Merci de votre participation !",
     n_annule: "Achat annulé : personne ne paie.",
     // Sondage
     sd_title: "Sondage d'intérêt", sd_help: "Sans engagement : indiquez la quantité qui vous intéresserait. Les souscriptions ouvriront si l'intérêt est suffisant.",
@@ -54,7 +57,7 @@ export const TXT_ACHATS_PLUS = {
     sv_place: "Lieu", sv_note: "Note", sv_add: "Ajouter l'étape", sv_empty: "Aucune étape pour le moment.",
     // Avis
     av_title: "Avis sur le fournisseur", av_quality: "Qualité", av_delay: "Respect des délais", av_comment: "Commentaire", av_send: "Envoyer mon avis",
-    av_summary: "{f} : qualité {q}/5 · délais {d}/5 ({n} avis)", av_mine: "Merci pour votre avis.",
+    av_summary: "★ qualité {q}/5 · délais {d}/5 ({n} avis)", av_mine: "Merci pour votre avis.",
     // Facture et paiement
     fa_title: "Facture du fournisseur", fa_add: "Joindre la facture", fa_see: "Voir la facture", fa_none: "Aucune facture jointe.",
     lp_title: "Date limite de paiement", lp_set: "Fixer", lp_help: "Rappels automatiques 3 jours avant ; une part impayée à la date limite est libérée.", lp_current: "Payez avant le {d}",
@@ -84,6 +87,9 @@ export const TXT_ACHATS_PLUS = {
   },
   en: {
     st_sondage: "Interest poll",
+    u_piece_pl: "items", u_litre_pl: "litres", u_lot_pl: "lots", u_kg_pl: "kg", u_m3_pl: "m³",
+    closed_on: "Closed on {date}", cout_reel_unit: "Actual cost: {m} / {u}", eco_reelle: "actual saving {pct}%",
+    bilan_by: "by {nom}", all_handed: "All shares have been handed over.",
     controle_only: "You are not the carrier of this purchase ({nom}): you can see everything and validate payments and the report (double control), but only the carrier can change it or move it forward.",
     f_sec1: "1. Product or service", f_sec2: "2. Price and quantities", f_sec3: "3. Organisation",
     f_sondage: "Start with an interest poll (no commitment)", f_sondage_help: "Members first indicate the quantity they want; you compare quotes, then open subscriptions.",
@@ -115,7 +121,7 @@ export const TXT_ACHATS_PLUS = {
     n_livre_g: "Hand over the shares (card scan), then enter the actual-cost report.",
     n_livre_m: "Collect your share by showing your membership card.",
     n_bilan_attente: "Report entered: ANOTHER board member must validate it.",
-    n_cloture: "Purchase closed. Remember to rate the supplier.",
+    n_cloture: "Purchase completed ✓ Everything is paid and handed over. Thank you for taking part!",
     n_annule: "Purchase cancelled: nobody pays.",
     sd_title: "Interest poll", sd_help: "No commitment: enter the quantity you would want. Subscriptions will open if interest is sufficient.",
     sd_qty: "Desired quantity", sd_save: "Save", sd_remove: "Remove my interest", sd_total: "{n} interested member(s) · {q} {u} in total (threshold: {s})",
@@ -129,7 +135,7 @@ export const TXT_ACHATS_PLUS = {
     sv_title: "Shipment tracking", sv_number: "Tracking no.", sv_carrier: "Carrier", sv_step: "Step (e.g. at the port of Montreal, in transit, arrived in Douala)",
     sv_place: "Place", sv_note: "Note", sv_add: "Add step", sv_empty: "No step yet.",
     av_title: "Supplier rating", av_quality: "Quality", av_delay: "Timeliness", av_comment: "Comment", av_send: "Send my rating",
-    av_summary: "{f}: quality {q}/5 · timeliness {d}/5 ({n} ratings)", av_mine: "Thank you for your rating.",
+    av_summary: "★ quality {q}/5 · timeliness {d}/5 ({n} ratings)", av_mine: "Thank you for your rating.",
     fa_title: "Supplier invoice", fa_add: "Attach the invoice", fa_see: "View invoice", fa_none: "No invoice attached.",
     lp_title: "Payment deadline", lp_set: "Set", lp_help: "Automatic reminders 3 days before; a share unpaid at the deadline is released.", lp_current: "Pay before {d}",
     action_ok: "✓ Action saved",

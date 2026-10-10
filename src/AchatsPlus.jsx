@@ -237,7 +237,8 @@ export function CreneauxPanel({ L, t, lang, a, gestionnaire, maSous, sous, onRel
           <div key={c.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 0", borderTop: "1px solid #EEF0F3", flexWrap: "wrap", fontSize: 13 }}>
             <b style={{ minWidth: 200 }}>{formatEventDateTime(c.debut, lang)} – {heure(c.fin)}</b>
             <span style={{ flex: 1 }}>📍 {c.lieu}</span>
-            <span style={{ fontSize: 12, color: MUTED }}>{fill(L.cr_count, { n })}{c.capacite ? ` / ${c.capacite}` : ""}</span>
+            {gestionnaire && <span style={{ fontSize: 12, color: MUTED }}>{fill(L.cr_count, { n })}{c.capacite ? ` / ${c.capacite}` : ""}</span>}
+            {!gestionnaire && moi && <span style={{ fontWeight: 700, color: TEAL, fontSize: 12.5 }}>✓ {L.cr_chosen}</span>}
             {maSous?.statut === "retenu" && !maSous.remis_le && (moi
               ? <span style={{ fontWeight: 700, color: TEAL }}>✓ {L.cr_chosen}</span>
               : <Btn style={petit} disabled={busy || plein} onClick={() => rpc("achats_choisir_creneau", { p_id: a.id, p_creneau: c.id })}>{plein ? L.cr_full : L.cr_choose}</Btn>)}
