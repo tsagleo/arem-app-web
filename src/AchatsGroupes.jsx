@@ -461,6 +461,23 @@ const fmtQ = (n) => (Number(n) || 0).toLocaleString("fr-CA", { maximumFractionDi
 const fill = (s, vars) => Object.entries(vars).reduce((acc, [k, v]) => acc.replaceAll(`{${k}}`, String(v)), s);
 const uniteDe = (L, a) => L[`u_${a.unite}`] || a.unite;
 
+// ---------- Raison d'un complément ou d'un remboursement (2026-10-10) ----------
+// Demandé par l'utilisateur : « mettre l'intitulé qui génère ces frais ».
+// Compare l'estimation (prix de gros × quantité + frais estimés) au coût
+// réel saisi au bilan (facture + frais communs réels).
+function motifEcart(L, a, devise) {
+  if (!a || a.cout_reel_produits == null) return "";
+  const qte = Number(a.total_attribue) || 0;
+  const estProduits = r2(Number(a.prix_unitaire) * qte);
+  const estFrais = r2(Number(a.frais_estimes) || 0);
+  const reelProduits = r2(Number(a.cout_reel_produits) || 0);
+  const reelFrais = r2(Number(a.frais_communs_reels) || 0);
+  const parts = [];
+  if (reelProduits !== estProduits) parts.push(fill(L.ec_produits, { r: money(reelProduits, devise), e: money(estProduits, devise), d: (reelProduits > estProduits ? "+" : "") + money(r2(reelProduits - estProduits), devise) }));
+  if (reelFrais !== estFrais) parts.push(fill(L.ec_frais, { r: money(reelFrais, devise), e: money(estFrais, devise), d: (reelFrais > estFrais ? "+" : "") + money(r2(reelFrais - estFrais), devise) }));
+  return parts.length ? parts.join(" · ") : L.ec_aucun;
+}
+
 // ---------- Calculs (miroir des fonctions SQL achats_du / achats_solde) ----------
 function duDe(s, a) {
   if (!s || s.statut !== "retenu" || !a || a.statut === "annule" || a.statut === "refuse") return 0;
@@ -781,7 +798,9 @@ function TableMouvements({ L, t, lang, mouvements, devise, achatsParId, profile,
             <td style={td}>{new Date(m.declare_le || m.created_at).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA")}</td>
             {montrerAchat && <td style={td}>{a?.titre || "—"}</td>}
             <td style={td}>{m.member_nom}</td>
-            <td style={td}>{L[`k_${m.sens}`]} <span style={{ color: MUTED }}>({L[`o_${m.objet}`]})</span></td>
+            <td style={td}>{L[`k_${m.sens}`]} <span style={{ color: MUTED }}>({L[`o_${m.objet}`]})</span>
+              {["complement", "remboursement"].includes(m.objet) && a && <div style={{ fontSize: 11.5, color: AMBER, marginTop: 2, maxWidth: 320 }}>{L.ec_titre} : {motifEcart(L, a, devise)}</div>}
+            </td>
             <td style={td}>{L[`mo_${m.mode}`] || m.mode}{m.reference ? ` · ${m.reference}` : ""}</td>
             <td style={{ ...td, fontWeight: 700, color: m.sens === "entree" ? TEAL : m.sens === "sortie" ? RED : "inherit" }}>{money(m.montant, devise)}</td>
             <td style={td}>{L[`ms_${m.statut}`]}{m.motif_rejet ? ` — ${m.motif_rejet}` : ""}</td>
@@ -883,6 +902,14 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
           <b style={{ color: solde < 0 ? RED : TEAL }}>{solde < 0 ? fill(L.to_pay, { m: money(-solde, devise) }) : solde > 0 ? fill(L.owed, { m: money(solde, devise) }) : L.settled}</b>
         </div>
       </div>
+      {s.part_reelle != null && Math.abs(r2(Number(s.part_reelle) - Number(s.montant_du))) > 0.004 && (
+        <div style={{ marginTop: 12, padding: 12, background: "#FDF8EE", borderRadius: 10, fontSize: 13 }}>
+          <b>{Number(s.part_reelle) > Number(s.montant_du) ? L.ec_pourquoi_plus : L.ec_pourquoi_moins}</b>
+          <div style={{ marginTop: 4 }}>{fill(L.ec_detail, { est: money(s.montant_du, devise), reel: money(s.part_reelle, devise), d: (Number(s.part_reelle) > Number(s.montant_du) ? "+" : "") + money(r2(Number(s.part_reelle) - Number(s.montant_du)), devise) })}</div>
+          <div style={{ marginTop: 4, color: AMBER, fontWeight: 600 }}>{motifEcart(L, a, devise)}</div>
+          <div style={{ marginTop: 4, fontSize: 12, color: MUTED }}>{L.ec_repartition}</div>
+        </div>
+      )}
       <Message msg={msg} />
       {peutPayer && (
         <div style={{ marginTop: 12, padding: 12, background: "#F4F8F6", borderRadius: 10 }}>
@@ -1054,7 +1081,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       tableaux: [
         { titre: L.subs_title, head: L.csv_head_sheet, body: rows },
         { titre: L.mvts_title, head: [L.col_date, L.col_member, L.col_kind, L.col_mode, L.col_amount, L.col_status, L.col_received, L.col_validated],
-          body: mvtsAchat.map((m) => [new Date(m.declare_le).toLocaleDateString("fr-CA"), m.member_nom, `${L[`k_${m.sens}`]} (${L[`o_${m.objet}`]})`, L[`mo_${m.mode}`], Number(m.montant).toFixed(2), L[`ms_${m.statut}`], m.recu_par_nom || "", m.valide_par_nom || ""]) },
+          body: mvtsAchat.map((m) => [new Date(m.declare_le).toLocaleDateString("fr-CA"), m.member_nom, `${L[`k_${m.sens}`]} (${L[`o_${m.objet}`]})${["complement", "remboursement"].includes(m.objet) ? ` - ${motifEcart(L, a, devise)}` : ""}`, L[`mo_${m.mode}`], Number(m.montant).toFixed(2), L[`ms_${m.statut}`], m.recu_par_nom || "", m.valide_par_nom || ""]) },
       ],
     }).catch((e) => alert(errTxt(e, t)));
   }
