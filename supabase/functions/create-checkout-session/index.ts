@@ -348,7 +348,28 @@ Deno.serve(async (req: Request) => {
       const payees = new Set(
         (presences ?? []).filter((p) => Number(p.montant ?? 0) > 0).map((p) => p.mois)
       );
-      const prochaine = periodes.find((p) => !payees.has(p)) ?? null;
+      // 2026-10-10 : si l'association a choisi que les nouveaux adhérents ne
+      // paient pas ce qui précède leur adhésion (associations.nouveaux_payent_anterieur
+      // = false, sql/2026-10-10l), on saute les périodes antérieures à leur
+      // date d'adhésion. Requêtes séparées et tolérantes : sans le script SQL,
+      // comportement inchangé.
+      let premiere = 0;
+      const { data: reglage } = await supabase.from("associations").select("nouveaux_payent_anterieur").eq("id", association.id).maybeSingle();
+      if (reglage && reglage.nouveaux_payent_anterieur === false) {
+        const { data: fiche } = await supabase.from("members").select("date_adhesion").eq("id", member.id).maybeSingle();
+        const j = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(fiche?.date_adhesion ?? ""));
+        if (j) {
+          const annee = new Date().getFullYear();
+          const da = new Date(+j[1], +j[2] - 1, +j[3]);
+          if (da.getFullYear() > annee) premiere = periodes.length;
+          else if (da.getFullYear() === annee) {
+            premiere = (association.frequence_reunions ?? "mois") === "mois"
+              ? da.getMonth()
+              : Math.min(periodes.length, Math.floor(Math.floor((da.getTime() - new Date(annee, 0, 1).getTime()) / 86400000) / (365 / periodes.length)));
+          }
+        }
+      }
+      const prochaine = periodes.slice(premiere).find((p) => !payees.has(p)) ?? null;
       plan =
         prochaine !== null
           ? {
