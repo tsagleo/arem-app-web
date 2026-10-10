@@ -24,6 +24,7 @@ import {
   ExternalLink, Trash2, CheckCircle2, AlertTriangle, Calendar, MapPin, MessageSquare, Star, Send, Dices, Upload,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
+import { exporterCertificatsBourse } from "./jeunessePdf";
 import { Section, Container, Card, Btn, Field, Pill, inputStyle, useLang, friendlyError, foldText, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
 
 const AMBER = "#B7791F";
@@ -126,6 +127,7 @@ const TXT = {
     bou_draw_live: "Tirage en cours dans la rubrique « Tirages au sort ».",
     bou_apply_draw: "Appliquer le résultat du tirage", bou_draw_done: "Le tirage est terminé.",
     bou_laureats: "Lauréat(s) : {noms}",
+    bou_certificat: "Certificat (PDF)", bou_certificats: "Certificats des lauréats (PDF)",
     // Encadrement
     cad_rules_title: "Règles de protection des mineurs (imposées par la base de données)",
     cad_rule_1: "Consentement parental obligatoire : tant que le parent ou tuteur n'a pas donné son accord (date et identité enregistrées), aucun jumelage, séance, message ni candidature n'est possible pour un mineur.",
@@ -224,6 +226,7 @@ const TXT = {
     bou_draw_live: "Draw in progress in the “Random draws” section.",
     bou_apply_draw: "Apply the draw result", bou_draw_done: "The draw is finished.",
     bou_laureats: "Recipient(s): {noms}",
+    bou_certificat: "Certificate (PDF)", bou_certificats: "Recipients' certificates (PDF)",
     cad_rules_title: "Rules protecting minors (enforced by the database)",
     cad_rule_1: "Mandatory parental consent: until the parent or guardian has agreed (date and identity recorded), no match, session, message or application is possible for a minor.",
     cad_rule_2: "No private messaging: all messages go through the match thread, readable by the parent and youth leads. Messages can be neither edited nor deleted.",
@@ -1132,7 +1135,7 @@ function CandidatureJury({ L, t, c, etudiant, pickable, picked, onPick, onChange
   );
 }
 
-function BourseCard({ L, t, lang, profile, isResp, isBureau, b, candidatures, etudiants, tirage, onChanged }) {
+function BourseCard({ association, L, t, lang, profile, isResp, isBureau, b, candidatures, etudiants, tirage, onChanged }) {
   const [applyOpen, setApplyOpen] = useState(false);
   const [etuId, setEtuId] = useState("");
   const [motiv, setMotiv] = useState("");
@@ -1176,6 +1179,22 @@ function BourseCard({ L, t, lang, profile, isResp, isBureau, b, candidatures, et
           {b.description && <p style={{ ...muted, whiteSpace: "pre-wrap" }}>{b.description}</p>}
           {b.criteres && <p style={{ ...muted, whiteSpace: "pre-wrap", marginTop: 4 }}><b>{L.bou_criteres} :</b> {b.criteres}</p>}
           {laureats.length > 0 && <p style={{ fontSize: 13, color: TEAL, fontWeight: 700, margin: "8px 0 0" }}>🏆 {L.bou_laureats.replace("{noms}", laureats.join(", "))}</p>}
+          {(() => {
+            // Certificat imprimable : tous les lauréats pour les responsables,
+            // seulement son propre jeune pour un parent (2026-10-10).
+            const cl = cands.filter((c) => c.statut === "laureat")
+              .map((c) => etudiants.find((e) => e.id === c.etudiant_id))
+              .filter((e) => e && (isResp || e.parent_member_id === profile.member_id || e.member_id === profile.member_id));
+            if (b.statut !== "attribuee" || cl.length === 0) return null;
+            return (
+              <Btn variant="outline" style={{ ...small, marginTop: 8 }} onClick={() => exporterCertificatsBourse({
+                bourse: b, association, lang,
+                laureats: cl.map((e) => ({ nom: nomEtudiant(e), niveauLabel: L["niv_" + e.niveau] || "" })),
+              }).catch((e) => alert(friendlyError(e, t)))}>
+                <Award size={13} /> {cl.length > 1 ? L.bou_certificats : L.bou_certificat}
+              </Btn>
+            );
+          })()}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
           {ouverte && profile.member_id && <Btn style={small} onClick={() => setApplyOpen(!applyOpen)}><Send size={13} /> {L.bou_apply}</Btn>}
@@ -1258,7 +1277,7 @@ function BourseCard({ L, t, lang, profile, isResp, isBureau, b, candidatures, et
   );
 }
 
-function BoursesTab({ L, t, lang, profile, isResp, isBureau, bourses, candidatures, etudiants, tirages, onChanged }) {
+function BoursesTab({ association, L, t, lang, profile, isResp, isBureau, bourses, candidatures, etudiants, tirages, onChanged }) {
   const [showNew, setShowNew] = useState(false);
   return (
     <div>
@@ -1266,7 +1285,7 @@ function BoursesTab({ L, t, lang, profile, isResp, isBureau, bourses, candidatur
       {bourses.length === 0 && <p style={{ color: GREY, fontStyle: "italic" }}>{L.bou_empty}</p>}
       <div style={{ display: "grid", gap: 12 }}>
         {bourses.map((b) => (
-          <BourseCard key={b.id} L={L} t={t} lang={lang} profile={profile} isResp={isResp} isBureau={isBureau} b={b}
+          <BourseCard key={b.id} association={association} L={L} t={t} lang={lang} profile={profile} isResp={isResp} isBureau={isBureau} b={b}
             candidatures={candidatures} etudiants={etudiants} tirage={tirages.find((x) => x.id === b.tirage_id)} onChanged={onChanged} />
         ))}
       </div>
@@ -1323,7 +1342,7 @@ function CadreTab({ L, t, isBureau, responsables, profiles, onChanged }) {
 // =====================================================================
 // Composant principal
 // =====================================================================
-export default function Jeunesse({ profile, isBureau }) {
+export default function Jeunesse({ profile, isBureau, association }) {
   const { t, lang } = useLang();
   const L = TXT[lang === "en" ? "en" : "fr"];
   const [tab, setTab] = useState("ressources");
@@ -1427,7 +1446,7 @@ export default function Jeunesse({ profile, isBureau }) {
         {tab === "jeunes" && <JeunesTab L={L} t={t} lang={lang} profile={profile} isResp={isResp} etudiants={d.etudiants} mentors={d.mentors} members={d.members} onChanged={load} />}
         {tab === "mentors" && <MentorsTab L={L} t={t} profile={profile} isBureau={isBureau} mentors={d.mentors} members={d.members} onChanged={load} />}
         {tab === "jumelages" && <JumelagesTab L={L} t={t} lang={lang} profile={profile} isResp={isResp} etudiants={d.etudiants} mentors={d.mentors} jumelages={d.jumelages} seances={d.seances} messages={d.messages} onChanged={load} />}
-        {tab === "bourses" && <BoursesTab L={L} t={t} lang={lang} profile={profile} isResp={isResp} isBureau={isBureau} bourses={d.bourses} candidatures={d.candidatures} etudiants={d.etudiants} tirages={d.tirages} onChanged={load} />}
+        {tab === "bourses" && <BoursesTab association={association} L={L} t={t} lang={lang} profile={profile} isResp={isResp} isBureau={isBureau} bourses={d.bourses} candidatures={d.candidatures} etudiants={d.etudiants} tirages={d.tirages} onChanged={load} />}
         {tab === "cadre" && <CadreTab L={L} t={t} isBureau={isBureau} responsables={d.responsables} profiles={d.profiles} onChanged={load} />}
       </Section>
     </Container>

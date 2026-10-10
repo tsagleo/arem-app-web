@@ -6878,7 +6878,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
           : <Container><Section><PremiumLocked label={t("nav_draws")} onUpgrade={goToForfait} features={[t("premium_feat_tirages_1"), t("premium_feat_tirages_2"), t("premium_feat_tirages_3")]} /></Section></Container>
       )}
       {tab === "jeunesse" && (isBureau || isResponsable || isAdherent) && (
-        isPremiumPlan ? <Jeunesse profile={profile} isBureau={isBureau} />
+        isPremiumPlan ? <Jeunesse profile={profile} isBureau={isBureau} association={association} />
           : <Container><Section><PremiumLocked label={t("nav_jeunesse")} onUpgrade={goToForfait} features={[t("premium_feat_jeunesse_1"), t("premium_feat_jeunesse_2"), t("premium_feat_jeunesse_3")]} /></Section></Container>
       )}
       {tab === "achats" && (isBureau || isResponsable || isAdherent) && (
