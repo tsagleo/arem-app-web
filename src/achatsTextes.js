@@ -60,6 +60,7 @@ export const TXT_ACHATS_PLUS = {
     lp_title: "Date limite de paiement", lp_set: "Fixer", lp_help: "Rappels automatiques 3 jours avant ; une part impayée à la date limite est libérée.", lp_current: "Payez avant le {d}",
     action_ok: "✓ Action enregistrée",
     lp_done: "Date limite de paiement fixée au {d}. Les souscripteurs ont été prévenus.",
+    pay_cash: "J'ai payé en espèces au porteur", confirm_cash: "Confirmez-vous avoir remis {m} en espèces à {nom} ? Il confirmera la réception, puis un autre membre du bureau validera.",
     pay_card: "Payer par carte", pay_card_redirect: "Redirection vers le paiement sécurisé…",
     // Remise
     rm_proxy: "Récupéré par (procuration, facultatif)", rm_proxy_ph: "Nom de la personne qui récupère", rm_full: "Mode distribution plein écran", rm_exit: "Quitter le plein écran",
@@ -122,6 +123,7 @@ export const TXT_ACHATS_PLUS = {
     lp_title: "Payment deadline", lp_set: "Set", lp_help: "Automatic reminders 3 days before; a share unpaid at the deadline is released.", lp_current: "Pay before {d}",
     action_ok: "✓ Action saved",
     lp_done: "Payment deadline set to {d}. Subscribers have been notified.",
+    pay_cash: "I paid the carrier in cash", confirm_cash: "Do you confirm you handed {m} in cash to {nom}? They will confirm receipt, then another board member will validate.",
     pay_card: "Pay by card", pay_card_redirect: "Redirecting to secure payment…",
     rm_proxy: "Collected by (proxy, optional)", rm_proxy_ph: "Name of the person collecting", rm_full: "Full-screen distribution mode", rm_exit: "Exit full screen",
     rm_by_proxy: "collected by {nom}",

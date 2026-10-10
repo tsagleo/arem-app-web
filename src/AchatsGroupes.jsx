@@ -881,6 +881,8 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
         <div style={{ ...ligneBtns, marginTop: 12 }}>
           <PayerCarte L={L} t={t} a={a} />
           <Btn onClick={() => { setShowInterac((v) => !v); setMontant(String(reste)); }}><Upload size={14} /> {L.pay_interac}</Btn>
+          {/* Espèces remises au porteur : déclarées ici, confirmées « reçu » par le porteur, validées par un autre membre du bureau (sql/2026-10-10s). */}
+          <Btn variant="outline" onClick={() => onAction("achats_declarer_paiement", { p_achat: a.id, p_montant: reste, p_mode: "especes", p_preuve_path: null, p_reference: null }, fill(L.confirm_cash, { m: money(reste, devise), nom: a.porteur_nom || "" }))}><Wallet size={14} /> {L.pay_cash}</Btn>
           {avoir > 0 && (
             <Btn variant="outline" onClick={() => {
               const m = Math.min(avoir, reste);
