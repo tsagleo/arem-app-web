@@ -899,7 +899,9 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
         <div><div style={{ color: MUTED, fontSize: 12 }}>{L.paid}</div><b>{money(paye, devise)}</b></div>
         {attente > 0 && <div><div style={{ color: MUTED, fontSize: 12 }}>{L.pending}</div><b style={{ color: AMBER }}>{money(attente, devise)}</b></div>}
         <div><div style={{ color: MUTED, fontSize: 12 }}>{L.balance}</div>
-          <b style={{ color: solde < 0 ? RED : TEAL }}>{solde < 0 ? fill(L.to_pay, { m: money(-solde, devise) }) : solde > 0 ? fill(L.owed, { m: money(solde, devise) }) : L.settled}</b>
+          {solde < 0 && r2(solde + attente) >= 0
+            ? <b style={{ color: AMBER }}>{fill(L.paye_attente, { m: money(attente, devise) })}</b>
+            : <b style={{ color: solde < 0 ? RED : TEAL }}>{solde < 0 ? fill(L.to_pay, { m: money(-r2(solde + attente), devise) }) : solde > 0 ? fill(L.owed, { m: money(solde, devise) }) : L.settled}</b>}
         </div>
       </div>
       {s.part_reelle != null && Math.abs(r2(Number(s.part_reelle) - Number(s.montant_du))) > 0.004 && (
@@ -1284,7 +1286,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <td style={td}>{s.statut === "inscrit" ? "—" : fmtQ(s.quantite_attribuee)}</td>
                     <td style={td}>{money(l.du, devise)}</td>
                     <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
-                    <td style={{ ...td, fontWeight: 700, color: l.solde < 0 ? RED : l.solde > 0 ? AMBER : TEAL }}>{money(l.solde, devise)}</td>
+                    <td style={{ ...td, fontWeight: 700, color: l.solde < 0 && r2(l.solde + l.attente) >= 0 ? AMBER : l.solde < 0 ? RED : l.solde > 0 ? AMBER : TEAL }}>{money(l.solde, devise)}{l.solde < 0 && r2(l.solde + l.attente) >= 0 && <div style={{ fontSize: 11, fontWeight: 600 }}>{L.attente_court}</div>}</td>
                     <td style={td}>{L[`s_${s.statut}`]}</td>
                     <td style={td}>{s.remis_le ? <>{fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") })}<br /><span style={{ fontSize: 11.5, color: s.remise_mode === "scan" ? TEAL : AMBER, fontWeight: 600 }}>{s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : ""}</span></> : "—"}</td>
                     <td style={td}>
@@ -1423,7 +1425,7 @@ function Releve({ L, t, lang, achats, sous, mouvements, devise, profile, associa
                 <td style={td}>{fmtQ(l.s.quantite_attribuee || l.s.quantite_demandee)} {uniteDe(L, l.a)}</td>
                 <td style={td}>{money(l.du, devise)}</td>
                 <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
-                <td style={{ ...td, fontWeight: 700, color: l.solde < 0 ? RED : TEAL }}>{money(l.solde, devise)}</td>
+                <td style={{ ...td, fontWeight: 700, color: l.solde < 0 && r2(l.solde + l.attente) >= 0 ? AMBER : l.solde < 0 ? RED : TEAL }}>{money(l.solde, devise)}{l.solde < 0 && r2(l.solde + l.attente) >= 0 && <div style={{ fontSize: 11, fontWeight: 600 }}>{L.attente_court}</div>}</td>
                 <td style={td}>{l.s.remis_le ? <>✓ {new Date(l.s.remis_le).toLocaleDateString("fr-CA")}{l.s.remise_mode && <div style={{ fontSize: 11, color: MUTED }}>{l.s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: l.s.remis_a_nom || "" }) : L["rm_mode_" + l.s.remise_mode]}</div>}</> : ["livre", "cloture"].includes(l.a.statut) && l.s.statut === "retenu" ? <span style={{ color: AMBER, fontWeight: 600 }}>{L.rt_short}</span> : "—"}</td>
               </tr>
             ))}

@@ -327,13 +327,26 @@ export function AvisPanel({ L, t, a, maSous, onReload }) {
   const [f, setF] = useState({ q: 5, d: 5, c: "" });
   const [envoye, setEnvoye] = useState(false);
   const [busy, rpc] = useRpc(t, onReload);
+  // Avis déjà donné : on l'affiche au lieu de redemander (signalé par l'utilisateur).
+  const [existant, setExistant] = useState(null);
+  useEffect(() => {
+    let annule = false;
+    if (!maSous?.member_id) return undefined;
+    supabase.from("achats_avis").select("note_qualite, note_delai, commentaire").eq("achat_id", a.id).eq("member_id", maSous.member_id).maybeSingle()
+      .then(({ data }) => { if (!annule && data) setExistant(data); });
+    return () => { annule = true; };
+  }, [a.id, maSous?.member_id, envoye]);
   // Avis seulement après avoir reçu sa part.
   if (!["livre", "cloture"].includes(a.statut) || maSous?.statut !== "retenu" || !maSous.remis_le) return null;
   const sel = (k) => <select style={{ ...inputStyle, width: 120 }} value={f[k]} onChange={(e) => setF({ ...f, [k]: Number(e.target.value) })}>{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}</select>;
   return (
     <Card style={{ marginBottom: 16 }}>
       <h4 style={titreH4}><Star size={15} /> {L.av_title}{a.fournisseur ? ` — ${a.fournisseur}` : ""}</h4>
-      {envoye ? <p style={{ color: TEAL, fontWeight: 600, fontSize: 13 }}>{L.av_mine}</p> : (
+      {envoye || existant ? (
+        <p style={{ color: TEAL, fontWeight: 600, fontSize: 13, margin: 0 }}>
+          ✓ {L.av_mine}{existant && <span style={{ color: MUTED, fontWeight: 500 }}> — {L.av_quality} {"★".repeat(existant.note_qualite)} · {L.av_delay} {"★".repeat(existant.note_delai)}{existant.commentaire ? ` · « ${existant.commentaire} »` : ""}</span>}
+        </p>
+      ) : (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <Field label={L.av_quality}>{sel("q")}</Field>
           <Field label={L.av_delay}>{sel("d")}</Field>
