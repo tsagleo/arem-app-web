@@ -990,10 +990,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
   }
 
   async function remettre(args) {
-    // achats_remettre_plus (sql/2026-10-10p) : procuration + photo ; repli
-    // sur l'ancienne fonction tant que le script n'est pas exécuté.
-    let { data: res, error } = await supabase.rpc("achats_remettre_plus", { p_id: a.id, p_token: null, p_sous: null, p_procuration: procuration.trim() || null, ...args });
-    if (error && (error.code === "PGRST202" || error.code === "42883")) ({ data: res, error } = await supabase.rpc("achats_remettre", { p_id: a.id, p_token: null, p_sous: null, ...args }));
+    // achats_remettre_plus (sql/2026-10-10u) : remise TRACÉE — scan, manuelle
+    // avec identité vérifiée, ou procuration (nom obligatoire).
+    const { data: res, error } = await supabase.rpc("achats_remettre_plus", { p_id: a.id, p_token: null, p_sous: null, p_procuration: procuration.trim() || null, p_mode: null, ...args });
     if (error) { setRemise({ tone: "warn", text: errTxt(error, t) }); bip(false); return; }
     onReload();
     if (!res) return;
@@ -1247,7 +1246,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
                     <td style={{ ...td, fontWeight: 700, color: l.solde < 0 ? RED : l.solde > 0 ? AMBER : TEAL }}>{money(l.solde, devise)}</td>
                     <td style={td}>{L[`s_${s.statut}`]}</td>
-                    <td style={td}>{s.remis_le ? fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") }) + (s.remis_a_nom ? ` (${fill(L.rm_by_proxy, { nom: s.remis_a_nom })})` : "") : "—"}</td>
+                    <td style={td}>{s.remis_le ? <>{fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") })}<br /><span style={{ fontSize: 11.5, color: s.remise_mode === "scan" ? TEAL : AMBER, fontWeight: 600 }}>{s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : ""}</span></> : "—"}</td>
                     <td style={td}>
                       <div style={ligneBtns}>
                         {gestionnaire && s.statut === "retenu" && l.solde + l.attente < 0 && a.statut !== "annule" && (
@@ -1263,7 +1262,12 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                           <Btn variant="outline" style={petitBtn} onClick={() => { const m = window.prompt(L.remove_prompt); if (m && m.trim()) action("achats_retirer_souscripteur", { p_sous: s.id, p_motif: m.trim() }); }}>{L.remove}</Btn>
                         )}
                         {gestionnaire && ["livre", "cloture"].includes(a.statut) && s.statut === "retenu" && !s.remis_le && (
-                          <Btn style={petitBtn} onClick={() => remettre({ p_sous: s.id })}><PackageCheck size={12} /> {L.hand_over}</Btn>
+                          <Btn style={petitBtn} onClick={() => {
+                            // Remise sans scan : confirmation explicite obligatoire.
+                            const qui = window.prompt(fill(L.rm_manual_prompt, { nom: s.member_nom }), "");
+                            if (qui === null) return;
+                            remettre({ p_sous: s.id, p_procuration: qui.trim() || null, p_mode: qui.trim() ? "procuration" : "manuel" });
+                          }}><PackageCheck size={12} /> {L.hand_over}</Btn>
                         )}
                       </div>
                     </td>

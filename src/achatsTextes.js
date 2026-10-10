@@ -65,6 +65,8 @@ export const TXT_ACHATS_PLUS = {
     // Remise
     rm_proxy: "Récupéré par (procuration, facultatif)", rm_proxy_ph: "Nom de la personne qui récupère", rm_full: "Mode distribution plein écran", rm_exit: "Quitter le plein écran",
     rm_by_proxy: "récupéré par {nom}",
+    rm_manual_prompt: "Remise SANS scan de la carte à {nom}.\n\nEn cliquant OK, vous confirmez avoir vérifié l'identité de la personne.\nSi quelqu'un d'autre récupère (procuration), écrivez son nom ci-dessous ; sinon laissez vide.",
+    rm_mode_scan: "📷 par scan de la carte", rm_mode_manuel: "✋ manuelle — identité vérifiée", rm_mode_procuration: "🤝 procuration : {nom}",
     relaunch: "Relancer cet achat", relaunch_help: "Crée un nouvel achat avec les mêmes informations.",
     // Doublons
     db_title: "Fiches adhérents en double possibles", db_help: "Même nom, courriel ou téléphone. Choisissez la fiche à GARDER : l'autre lui transfère tout (paiements, présences, achats…) puis est retirée.",
@@ -127,6 +129,8 @@ export const TXT_ACHATS_PLUS = {
     pay_card: "Pay by card", pay_card_redirect: "Redirecting to secure payment…",
     rm_proxy: "Collected by (proxy, optional)", rm_proxy_ph: "Name of the person collecting", rm_full: "Full-screen distribution mode", rm_exit: "Exit full screen",
     rm_by_proxy: "collected by {nom}",
+    rm_manual_prompt: "Handover WITHOUT card scan to {nom}.\n\nBy clicking OK, you confirm you checked the person's identity.\nIf someone else collects (proxy), write their name below; otherwise leave empty.",
+    rm_mode_scan: "📷 by card scan", rm_mode_manuel: "✋ manual — identity checked", rm_mode_procuration: "🤝 proxy: {nom}",
     relaunch: "Relaunch this purchase", relaunch_help: "Creates a new purchase with the same details.",
     db_title: "Possible duplicate member records", db_help: "Same name, email or phone. Choose the record to KEEP: the other transfers everything to it (payments, attendance, purchases…) and is removed.",
     db_keep: "Keep this one", db_confirm: "Merge: \"{r}\" will be removed and all its history transferred to \"{g}\". Continue?", db_done: "Merge done: {n} item(s) transferred.",
