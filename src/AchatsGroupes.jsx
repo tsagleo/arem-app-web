@@ -562,7 +562,7 @@ function QrScanner({ active, onDecode, L }) {
         const token = extractToken(text);
         if (!token) return;
         const now = Date.now();
-        if (lastRef.current.token === token && now - lastRef.current.time < 3000) return;
+        if (lastRef.current.token === token && now - lastRef.current.time < 8000) return;
         lastRef.current = { token, time: now };
         onDecodeRef.current?.(token);
       }, () => {}).catch(() => { if (!cancelled) setError(L.scan_error); });
@@ -951,6 +951,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
     const res = await action("achats_remettre", { p_id: a.id, p_token: null, p_sous: null, ...args });
     if (!res) return;
     if (!res.ok) setRemise({ tone: "warn", text: res.raison === "carte_inconnue" ? L.unknown_card : L.no_share });
+    // Même carte relue juste après la remise (le membre garde son QR devant la
+    // caméra) : on garde la confirmation au lieu d'afficher « Déjà remis ».
+    else if (res.deja_remis && Date.now() - new Date(res.remis_le).getTime() < 120000) setRemise({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) });
     else if (res.deja_remis) setRemise({ tone: "warn", text: `${res.member_nom} — ${fill(L.handover_again, { date: formatEventDateTime(res.remis_le, lang), nom: res.remis_par_nom || "" })}` });
     else setRemise({ text: fill(L.handover_ok, { nom: res.member_nom, q: fmtQ(res.quantite), u }) });
   }
