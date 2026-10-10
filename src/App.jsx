@@ -43,6 +43,8 @@ const GestionAcces = lazyModule(() => import("./GestionAcces.jsx"));
 const Gouvernance = lazyModule(() => import("./Gouvernance.jsx"));
 import { CompteNonRelieBanner, AideDemandeAdhesion } from "./LiaisonCompte.jsx";
 import MesEngagements from "./MesEngagements.jsx";
+import { txtEvPlus, finValiditeBadge, downloadMemberBadgesPdf } from "./evenementsPlus";
+import { mentionsLegales } from "./pdfOfficiel";
 import ParametresBadges from "./ParametresBadges.jsx";
 const VieAssociative = lazyModule(() => import("./VieAssociative.jsx"));
 const Projets = lazyModule(() => import("./Projets"));
@@ -6966,7 +6968,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       })()}
 
       {showMyCard && me && (
-        <MemberCardModal member={me} association={association} t={t} onClose={() => setShowMyCard(false)} />
+        <MemberCardModal member={me} association={association} t={t} roleLabel={isBureau && ROLE_KEY_MAP[profile.role] ? t(ROLE_KEY_MAP[profile.role]) : null} onClose={() => setShowMyCard(false)} />
       )}
 
       {recouvHistoryMemberId && (
@@ -7831,8 +7833,23 @@ function GalleryPhotoEditModal({ photo, t, onSave, onClose }) {
 // Le jeton (members.verification_token) est distinct de members.id —
 // scanner la carte d'un membre ne permet jamais de lister les autres.
 // =====================================================================
-function MemberCardModal({ member, association, t, onClose }) {
+// 2026-10-10 (signalé par l'utilisateur) : la carte à l'écran reprend
+// exactement le modèle du badge PDF (evenementsPlus.dessinerBadgeMembre) —
+// bandeau à la couleur de l'association avec logo, photo, rôle, « membre
+// depuis », validité, QR et mentions légales. Une seule carte pour les
+// événements et comme badge de présentation.
+function MemberCardModal({ member, association, t, onClose, roleLabel }) {
+  const { lang } = useLang();
+  const P = txtEvPlus(lang);
   const [qrDataUrl, setQrDataUrl] = useState(null);
+  const [emisLe, setEmisLe] = useState(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("member_card_tokens").select("emis_le").eq("member_id", member.id).maybeSingle()
+      .then(({ data }) => { if (!cancelled) setEmisLe(data?.emis_le || null); });
+    return () => { cancelled = true; };
+  }, [member.id]);
   // Code protégé de la carte (sql/2026-10-10c) : lu par mon_jeton_carte(),
   // lisible seulement par le membre lui-même — l'ancienne colonne
   // members.verification_token, lisible par tous, ne sert plus. Repli sur
@@ -7875,35 +7892,66 @@ function MemberCardModal({ member, association, t, onClose }) {
           body > *:not(.membercard-print-root) { display: none !important; }
           .membercard-print-root { position: static !important; background: white !important; padding: 0 !important; display: block !important; }
           .membercard-no-print { display: none !important; }
-          .membercard-card { box-shadow: none !important; width: 320px !important; max-width: 320px !important; margin: 24px auto !important; }
+          .membercard-card { box-shadow: none !important; width: 440px !important; max-width: 440px !important; margin: 24px auto !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
       `}</style>
-      <div className="membercard-card" style={{ background: "white", borderRadius: 16, padding: 28, maxWidth: 320, width: "92%", textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
-        <div className="membercard-no-print" style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 18 }}>✕</button>
-        </div>
-        {association?.logo_url && <img src={association.logo_url} alt="" style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", marginBottom: 8 }} />}
-        <h3 style={{ fontSize: 15, margin: "0 0 2px" }}>{association?.nom}</h3>
-        <p style={{ fontSize: 11.5, color: "#9AA2B5", marginBottom: 16 }}>{t("ms_card_subtitle")}</p>
-        {member.photo_url ? (
-          <img src={member.photo_url} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover", margin: "0 auto 10px" }} />
-        ) : (
-          <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--primary)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, margin: "0 auto 10px" }}>
-            {initialsOf(member.nom).slice(0, 2) || "?"}
+      <div className="membercard-card" style={{ background: "white", borderRadius: 14, maxWidth: 440, width: "94%", overflow: "hidden", border: "1px solid #C8CDD6", boxShadow: "0 12px 40px rgba(0,0,0,.25)" }} onClick={(e) => e.stopPropagation()}>
+        {/* Bandeau à la couleur de l'association */}
+        <div style={{ background: "var(--primary)", color: "white", display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
+          {association?.logo_url && <img src={association.logo_url} alt="" style={{ height: 34, maxWidth: 70, objectFit: "contain", background: "white", borderRadius: 6, padding: 2 }} />}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{association?.nom}</div>
+            <div style={{ fontSize: 10, letterSpacing: ".06em", opacity: 0.9 }}>{P.card}</div>
           </div>
-        )}
-        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--primary)", marginBottom: 2 }}>{member.nom}</div>
-        <div style={{ fontSize: 11.5, color: member.statut === "Actif" ? TEAL : RED, fontWeight: 600, marginBottom: 16 }}>
-          {member.statut === "Actif" ? t("ms_card_status_active") : t("ms_card_status_inactive")}
+          <button className="membercard-no-print" onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 17, color: "white" }} aria-label={t("action_close")}>✕</button>
         </div>
-        {qrDataUrl ? (
-          <img src={qrDataUrl} alt="QR" style={{ width: 180, height: 180 }} />
-        ) : (
-          <div style={{ width: 180, height: 180, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: "#9AA2B5", fontSize: 12 }}>{t("load_generic")}</div>
+        {/* Photo à gauche, renseignements au centre, QR à droite */}
+        <div style={{ display: "flex", gap: 12, padding: 14, alignItems: "flex-start" }}>
+          {member.photo_url ? (
+            <img src={member.photo_url} alt="" style={{ width: 72, height: 72, objectFit: "cover", border: "2px solid var(--primary)", flexShrink: 0 }} />
+          ) : (
+            <div style={{ width: 72, height: 72, background: "#F2F3F6", border: "2px solid var(--primary)", color: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 22, flexShrink: 0 }}>
+              {initialsOf(member.nom).slice(0, 2) || "?"}
+            </div>
+          )}
+          <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#000", lineHeight: 1.2 }}>{member.nom}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, fontStyle: "italic", margin: "3px 0 6px" }}>{roleLabel || P.member}</div>
+            {(() => {
+              const j = /^([0-9]{4})-([0-9]{2})-([0-9]{2})/.exec(String(member.date_adhesion || ""));
+              return j ? <div style={{ fontSize: 11.5, color: "#333" }}>{P.since.replace("{d}", new Date(+j[1], +j[2] - 1, +j[3]).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA"))}</div> : null;
+            })()}
+            {(() => {
+              const fin = finValiditeBadge(association, emisLe);
+              const expiree = fin && fin < new Date();
+              return (
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: expiree ? RED : "#000", marginTop: 2 }}>
+                  {fin ? P.validUntil.replace("{d}", fin.toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA", { day: "numeric", month: "long", year: "numeric" })) : P.valid.replace("{y}", String(new Date().getFullYear()))}
+                </div>
+              );
+            })()}
+            <div style={{ fontSize: 11, color: member.statut === "Actif" ? TEAL : RED, fontWeight: 600, marginTop: 6 }}>
+              {member.statut === "Actif" ? t("ms_card_status_active") : t("ms_card_status_inactive")}
+            </div>
+          </div>
+          <div style={{ flexShrink: 0 }}>
+            {qrDataUrl ? <img src={qrDataUrl} alt="QR" style={{ width: 118, height: 118, display: "block" }} />
+              : <div style={{ width: 118, height: 118, display: "flex", alignItems: "center", justifyContent: "center", color: "#9AA2B5", fontSize: 11 }}>{t("load_generic")}</div>}
+          </div>
+        </div>
+        {/* Mentions légales */}
+        {mentionsLegales(association).length > 0 && (
+          <div style={{ fontSize: 9, color: "#333", padding: "0 14px 10px", lineHeight: 1.35 }}>{mentionsLegales(association).join(" - ")}</div>
         )}
-        <p style={{ fontSize: 10.5, color: "#9AA2B5", marginTop: 14 }}>{t("ms_card_help")}</p>
-        <div className="membercard-no-print" style={{ display: "flex", gap: 10, marginTop: 18, justifyContent: "center" }}>
+        <p className="membercard-no-print" style={{ fontSize: 10.5, color: "#6B7280", margin: 0, padding: "8px 14px", borderTop: "1px solid #EEF0F3", textAlign: "center" }}>{t("ms_card_help")}</p>
+        <div className="membercard-no-print" style={{ display: "flex", gap: 10, padding: "0 14px 14px", justifyContent: "center", flexWrap: "wrap" }}>
           <Btn onClick={() => window.print()}><Printer size={14} /> {t("fin_print_btn")}</Btn>
+          <Btn variant="outline" disabled={pdfBusy || !cardToken} onClick={async () => {
+            setPdfBusy(true);
+            try { await downloadMemberBadgesPdf([{ ...member, verification_token: cardToken, emis_le: emisLe, role_label: roleLabel || P.member }], { association, lang, fileName: "mon_badge_membre.pdf" }); }
+            catch (e) { alert(friendlyError(e, t)); }
+            finally { setPdfBusy(false); }
+          }}><Download size={14} /> PDF</Btn>
         </div>
       </div>
     </div>,
