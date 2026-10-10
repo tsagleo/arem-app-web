@@ -1505,7 +1505,7 @@ export default function AchatsGroupes({ profile, isBureau, association }) {
       supabase.from("achats_groupes").select("*").eq("association_id", assoc).order("created_at", { ascending: false }),
       supabase.from("achats_souscriptions").select("*").eq("association_id", assoc).order("created_at"),
       supabase.from("achats_mouvements").select("*").eq("association_id", assoc).order("created_at", { ascending: false }),
-      isBureau ? supabase.from("members").select("id, nom").eq("association_id", assoc).order("nom") : Promise.resolve({ data: [] }),
+      isBureau ? supabase.from("members").select("id, nom").eq("association_id", assoc).neq("statut", "Supprimé").order("nom") : Promise.resolve({ data: [] }),
       supabase.from("tirages").select("id, titre, statut").eq("association_id", assoc),
     ]);
     setAchats(ac || []);
