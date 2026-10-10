@@ -1309,12 +1309,13 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                 </p>
               ) : (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0 12px" }}>
-                    <Field label={L.bilan_cost}><input type="number" min="0" step="0.01" style={inputStyle} value={bilan.cout} onChange={(e) => setBilan({ ...bilan, cout: e.target.value })} /></Field>
-                    <Field label={L.bilan_fees}><input type="number" min="0" step="0.01" style={inputStyle} value={bilan.frais} onChange={(e) => setBilan({ ...bilan, frais: e.target.value })} /></Field>
-                    <Field label={L.bilan_note}><input style={inputStyle} value={bilan.note} onChange={(e) => setBilan({ ...bilan, note: e.target.value })} /></Field>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "0 12px", alignItems: "end" }}>
+                    <Field label={L.bilan_cost}><input type="number" min="0" step="0.01" style={inputStyle} placeholder="ex. 160" value={bilan.cout} onChange={(e) => setBilan({ ...bilan, cout: e.target.value })} /></Field>
+                    <Field label={L.bilan_fees}><input type="number" min="0" step="0.01" style={inputStyle} placeholder="ex. 30" value={bilan.frais} onChange={(e) => setBilan({ ...bilan, frais: e.target.value })} /></Field>
+                    <Field label={L.bilan_note}><input style={inputStyle} placeholder="ex. Facture GB-2210" value={bilan.note} onChange={(e) => setBilan({ ...bilan, note: e.target.value })} /></Field>
                   </div>
                   {gestionnaire && <Btn variant="outline" onClick={() => action("achats_saisir_bilan", { p_id: a.id, p_cout_produits: Number(bilan.cout) || 0, p_frais_communs: Number(bilan.frais) || 0, p_note: bilan.note || null }, null, L.bilan_saved)} disabled={busy || bilan.cout === ""}>{L.bilan_save}</Btn>}
+                  {gestionnaire && bilan.cout === "" && <p style={{ fontSize: 12, color: MUTED, margin: "6px 0 0" }}>{L.bilan_hint}</p>}
                   {a.bilan_saisi_le && (
                     <div style={{ marginTop: 12 }}>
                       <p style={{ fontSize: 13 }}>{fill(L.bilan_entered, { date: formatEventDateTime(a.bilan_saisi_le, lang), p: money(a.cout_reel_produits, devise), f: money(a.frais_communs_reels, devise), t: money(totalReel, devise) })}</p>
