@@ -3,6 +3,10 @@
 export const TXT_ACHATS_PLUS = {
   fr: {
     st_sondage: "Sondage d'intérêt",
+    f_sec1: "1. Le produit ou service", f_sec2: "2. Prix et quantités", f_sec3: "3. Organisation",
+    f_sondage: "Commencer par un sondage d'intérêt (sans engagement)", f_sondage_help: "Les membres indiquent d'abord la quantité qui les intéresse ; vous comparez les devis, puis vous ouvrez les souscriptions.",
+    submit_sondage: "Lancer le sondage",
+    f_after: "Ensuite, dans la fiche de l'achat : étapes guidées, devis à comparer et à voter, paiement par carte ou Interac, créneaux de retrait, suivi d'expédition, remise par scan et avis sur le fournisseur.",
     // Frise et prochaine action
     etapes: ["Sondage", "Souscriptions", "Paiement des parts", "Commande", "Arrivée et remise", "Bilan", "Clôturé"],
     next_title: "À vous de jouer",
@@ -58,6 +62,10 @@ export const TXT_ACHATS_PLUS = {
   },
   en: {
     st_sondage: "Interest poll",
+    f_sec1: "1. Product or service", f_sec2: "2. Price and quantities", f_sec3: "3. Organisation",
+    f_sondage: "Start with an interest poll (no commitment)", f_sondage_help: "Members first indicate the quantity they want; you compare quotes, then open subscriptions.",
+    submit_sondage: "Start the poll",
+    f_after: "Then, in the purchase page: guided steps, quotes to compare and vote on, card or Interac payment, pickup slots, shipment tracking, handover by scan and supplier rating.",
     etapes: ["Poll", "Subscriptions", "Share payment", "Order", "Arrival & handover", "Report", "Closed"],
     next_title: "Your next step",
     n_sondage_m: "Tell us how much you would be interested in (no commitment).",

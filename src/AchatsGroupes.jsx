@@ -641,6 +641,7 @@ function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, 
   const [photo, setPhoto] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [sondage, setSondage] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === "checkbox" ? e.target.checked : e.target.value }));
 
   async function enregistrer() {
@@ -656,9 +657,14 @@ function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, 
       photoUrl = supabase.storage.from("achats-photos").getPublicUrl(path).data.publicUrl;
     }
     const p = { ...f, photo_url: photoUrl, date_limite: datetimeLocalToISO(f.date_limite) };
-    const { error } = initial && !copie
+    const { data: nouvelId, error } = initial && !copie
       ? await supabase.rpc("achats_modifier", { p_id: initial.id, p })
       : await supabase.rpc("achats_proposer", { p });
+    // Sondage d'intérêt demandé dès la création (sql/2026-10-10p).
+    if (!error && sondage && nouvelId && !(initial && !copie)) {
+      const { error: e2 } = await supabase.rpc("achats_passer_en_sondage", { p_id: nouvelId });
+      if (e2) { setBusy(false); setErr(errTxt(e2, t)); return; }
+    }
     setBusy(false);
     if (error) { setErr(errTxt(error, t)); return; }
     onSaved();
@@ -672,7 +678,8 @@ function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, 
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer" }} aria-label="Fermer"><X size={18} /></button>
       </div>
       {!isBureau && !initial && <p style={{ fontSize: 13, color: MUTED, marginTop: 0 }}>{L.propose_note}</p>}
-      <Field label={L.f_title}><input style={inputStyle} value={f.titre} onChange={set("titre")} placeholder={L.f_title_ph} maxLength={140} /></Field>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)", margin: "4px 0 8px" }}>{L.f_sec1}</div>
+      <Field label={L.f_title}><input required style={inputStyle} value={f.titre} onChange={set("titre")} placeholder={L.f_title_ph} maxLength={140} /></Field>
       <Field label={L.f_desc}><textarea style={{ ...inputStyle, minHeight: 64 }} value={f.description} onChange={set("description")} /></Field>
       <div style={grid}>
         <Field label={L.f_supplier}><input style={inputStyle} value={f.fournisseur} onChange={set("fournisseur")} /></Field>
@@ -686,17 +693,23 @@ function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, 
           {f.photo_url && !photo && <img src={f.photo_url} alt="" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 8, display: "block", marginBottom: 6 }} />}
           <input type="file" accept="image/*" onChange={(e) => setPhoto(e.target.files?.[0] || null)} />
         </Field>
-        <Field label={L.f_price}><input type="number" min="0" step="0.01" style={inputStyle} value={f.prix_unitaire} onChange={set("prix_unitaire")} /></Field>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)", margin: "8px 0 8px" }}>{L.f_sec2}</div>
+      <div style={grid}>
+        <Field label={L.f_price}><input required type="number" min="0" step="0.01" style={inputStyle} value={f.prix_unitaire} onChange={set("prix_unitaire")} /></Field>
         <Field label={L.f_retail}><input type="number" min="0" step="0.01" style={inputStyle} value={f.prix_detail} onChange={set("prix_detail")} /></Field>
         <Field label={L.f_fees}><input type="number" min="0" step="0.01" style={inputStyle} value={f.frais_estimes} onChange={set("frais_estimes")} /></Field>
-        <Field label={L.f_threshold}><input type="number" min="0" step="any" style={inputStyle} value={f.seuil_min} onChange={set("seuil_min")} /></Field>
+        <Field label={L.f_threshold}><input required type="number" min="0" step="any" style={inputStyle} value={f.seuil_min} onChange={set("seuil_min")} /></Field>
         <Field label={L.f_stock}><input type="number" min="0" step="any" style={inputStyle} value={f.stock_max} onChange={set("stock_max")} /></Field>
         <Field label={L.f_mode}>
           <select style={inputStyle} value={f.mode_repartition} onChange={set("mode_repartition")}>
             {["premier_arrive", "prorata", "tirage"].map((m) => <option key={m} value={m}>{L[`m_${m}`]}</option>)}
           </select>
         </Field>
-        <Field label={L.f_deadline}><input type="datetime-local" style={inputStyle} value={f.date_limite} onChange={set("date_limite")} /></Field>
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--primary)", margin: "8px 0 8px" }}>{L.f_sec3}</div>
+      <div style={grid}>
+        <Field label={L.f_deadline}><input required type="datetime-local" style={inputStyle} value={f.date_limite} onChange={set("date_limite")} /></Field>
         {isBureau && (
           <Field label={L.f_carrier}>
             <select style={inputStyle} value={f.porteur_member_id} onChange={set("porteur_member_id")}>
@@ -711,8 +724,15 @@ function AchatForm({ L, t, isBureau, members, initial, copie, profile, onClose, 
         {f.perissable && <label><input type="checkbox" checked={f.chaine_froid} onChange={set("chaine_froid")} /> {L.f_cold}</label>}
       </div>
       {f.perissable && !f.chaine_froid && <Message msg={{ tone: "warn", text: L.cold_required }} />}
+      {isBureau && !(initial && !copie) && (
+        <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13.5, padding: 10, background: "#F0E8FA", borderRadius: 10, marginBottom: 12 }}>
+          <input type="checkbox" style={{ marginTop: 3 }} checked={sondage} onChange={(e) => setSondage(e.target.checked)} />
+          <span><b>📊 {L.f_sondage}</b><br /><span style={{ fontSize: 12, color: MUTED }}>{L.f_sondage_help}</span></span>
+        </label>
+      )}
+      {!(initial && !copie) && <p style={{ fontSize: 12, color: MUTED, margin: "0 0 12px" }}>💡 {L.f_after}</p>}
       {err && <Message msg={{ tone: "warn", text: err }} />}
-      <Btn onClick={enregistrer} disabled={busy}>{initial ? L.submit_save : isBureau ? L.submit_create : L.submit_propose}</Btn>
+      <Btn onClick={enregistrer} disabled={busy}>{initial && !copie ? L.submit_save : sondage ? L.submit_sondage : isBureau ? L.submit_create : L.submit_propose}</Btn>
     </Card>
   );
 }
