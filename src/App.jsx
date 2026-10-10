@@ -2608,6 +2608,18 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
   // son propre badge de menu (pendingLinkRequestsCount / showBadge).
   const { counts: unreadCounts, total: unreadTotal, markViewed, refresh: refreshUnreadCounts } = useUnreadCounts();
 
+  // 2026-10-10 (signalé par l'utilisateur) : après une demande confirmée ou
+  // un rôle changé dans Gestion des accès, la liste des adhérents et celle
+  // des comptes du bureau se mettent à jour sans recharger la page.
+  async function rafraichirApresAcces() {
+    refreshUnreadCounts();
+    const [{ data: m }, { data: bp }] = await Promise.all([
+      supabase.from("members").select("*").order("nom"),
+      isBureau ? supabase.from("profiles").select("id,nom_complet,role").in("role", ["bureau_president", "bureau_secretaire", "bureau_tresorier"]).order("nom_complet") : Promise.resolve({ data: null }),
+    ]);
+    if (m) setMembers(m);
+    if (bp) setBureauProfiles(bp);
+  }
   const loadAll = useCallback(async () => {
     setLoading(true); setErrorMsg("");
     try {
@@ -5717,7 +5729,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
       {/* ================= CONFIGURATION (marque blanche) ================= */}
       {tab === "acces" && isBureau && (
         <GestionAcces profile={profile} association={association} isPresident={isPresident}
-          onPendingCountChange={setPendingLinkRequestsCount} onLinkRequestResolved={refreshUnreadCounts} />
+          onPendingCountChange={setPendingLinkRequestsCount} onLinkRequestResolved={rafraichirApresAcces} />
       )}
 
       {tab === "config" && isBureau && (

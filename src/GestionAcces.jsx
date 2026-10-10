@@ -370,6 +370,7 @@ export default function GestionAcces({ profile, association, isPresident, onPend
     const { error } = await supabase.rpc("assigner_role_bureau", { p_profile_id: profileId, p_role: role, p_bureau_role_config_id: configId });
     if (error) { setMsg(friendlyError(error, t)); return; }
     load();
+    onLinkRequestResolved?.(); // la liste des approbateurs (Configuration) suit le nouveau rôle
   }
 
   async function toggleBlocked(profileId, blocked) {
