@@ -858,7 +858,7 @@ function CompleteJoinRequestForm({ defaultEmail, onSubmit, onCancel }) {
 
           <h3 style={{ fontSize: 14, marginBottom: 6 }}>{t("join_complete_section_identite")}</h3>
           <Field label={t("join_complete_identite_label")}>
-            <input type="file" required accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, pieceIdentiteFile: e.target.files?.[0] || null }))} />
+            <input type="file" accept="image/*,.pdf" style={inputStyle} onChange={(e) => setForm((p) => ({ ...p, pieceIdentiteFile: e.target.files?.[0] || null }))} />
           </Field>
           <p style={{ fontSize: 11.5, color: "#686F7D", marginTop: -8, marginBottom: 24 }}>{t("join_complete_identite_help")}</p>
 
