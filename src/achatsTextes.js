@@ -65,6 +65,8 @@ export const TXT_ACHATS_PLUS = {
     // Remise
     rm_proxy: "Récupéré par (procuration, facultatif)", rm_proxy_ph: "Nom de la personne qui récupère", rm_full: "Mode distribution plein écran", rm_exit: "Quitter le plein écran",
     rm_by_proxy: "récupéré par {nom}",
+    rt_done: "📦 Part retirée : {q} {u} le {date}", rt_by: "remise par {nom}", rt_todo: "Votre part est arrivée : récupérez-la en présentant votre carte de membre.", rt_short: "À retirer",
+    n_retire: "Votre part a été retirée ✓ Il ne reste que le bilan au coût réel (un éventuel complément ou remboursement vous sera indiqué ici).",
     rm_manual_prompt: "Remise SANS scan de la carte à {nom}.\n\nEn cliquant OK, vous confirmez avoir vérifié l'identité de la personne.\nSi quelqu'un d'autre récupère (procuration), écrivez son nom ci-dessous ; sinon laissez vide.",
     rm_mode_scan: "📷 par scan de la carte", rm_mode_manuel: "✋ manuelle — identité vérifiée", rm_mode_procuration: "🤝 procuration : {nom}",
     relaunch: "Relancer cet achat", relaunch_help: "Crée un nouvel achat avec les mêmes informations.",
@@ -129,6 +131,8 @@ export const TXT_ACHATS_PLUS = {
     pay_card: "Pay by card", pay_card_redirect: "Redirecting to secure payment…",
     rm_proxy: "Collected by (proxy, optional)", rm_proxy_ph: "Name of the person collecting", rm_full: "Full-screen distribution mode", rm_exit: "Exit full screen",
     rm_by_proxy: "collected by {nom}",
+    rt_done: "📦 Share collected: {q} {u} on {date}", rt_by: "handed over by {nom}", rt_todo: "Your share has arrived: collect it by showing your membership card.", rt_short: "To collect",
+    n_retire: "Your share has been collected ✓ Only the actual-cost report remains (any top-up or refund will be shown here).",
     rm_manual_prompt: "Handover WITHOUT card scan to {nom}.\n\nBy clicking OK, you confirm you checked the person's identity.\nIf someone else collects (proxy), write their name below; otherwise leave empty.",
     rm_mode_scan: "📷 by card scan", rm_mode_manuel: "✋ manual — identity checked", rm_mode_procuration: "🤝 proxy: {nom}",
     relaunch: "Relaunch this purchase", relaunch_help: "Creates a new purchase with the same details.",

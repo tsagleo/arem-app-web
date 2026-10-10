@@ -58,7 +58,7 @@ export function FriseAchat({ L, a, maSous, sous, mouvements, gestionnaire, isBur
   else if (a.statut === "ouvert") msg = gestionnaire ? L.n_ouvert_g : maSous?.statut === "inscrit" ? L.n_ouvert_inscrit : L.n_ouvert_m;
   else if (a.statut === "confirme") msg = gestionnaire ? (impayes > 0 ? fill(L.n_confirme_g, { n: impayes }) : L.n_confirme_g_ok) : aPayer > 0 ? fill(L.n_confirme_m, { m: money(aPayer, devise) }) : L.n_confirme_ok;
   else if (a.statut === "commande") msg = gestionnaire ? L.n_commande_g : L.n_commande_m;
-  else if (a.statut === "livre") msg = a.bilan_saisi_le && isBureau ? L.n_bilan_attente : gestionnaire ? L.n_livre_g : L.n_livre_m;
+  else if (a.statut === "livre") msg = a.bilan_saisi_le && isBureau ? L.n_bilan_attente : gestionnaire ? L.n_livre_g : maSous?.remis_le ? L.n_retire : L.n_livre_m;
   else if (a.statut === "cloture") msg = L.n_cloture;
   const annule = a.statut === "annule" || a.statut === "refuse";
   return (

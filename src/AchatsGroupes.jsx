@@ -862,6 +862,19 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
       {s.statut === "non_retenu" && <p style={{ fontSize: 13.5 }}>{L.not_retained}</p>}
       {s.statut === "desiste" && <p style={{ fontSize: 13.5, color: RED }}>{fill(L.desiste, { m: s.motif || "" })}</p>}
       {s.statut === "retenu" && <p style={{ fontSize: 13.5, margin: "0 0 8px" }}>{fill(L.my_alloc, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a) })}</p>}
+      {/* Retrait de la marchandise (2026-10-10) : visible dans l'espace du membre. */}
+      {s.statut === "retenu" && s.remis_le && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", background: TEAL_LIGHT, border: `1.5px solid ${TEAL}`, borderRadius: 10, padding: "10px 12px", margin: "0 0 10px" }}>
+          <PackageCheck size={20} color={TEAL} />
+          <div>
+            <div style={{ fontWeight: 700, color: TEAL, fontSize: 14 }}>{fill(L.rt_done, { q: fmtQ(s.quantite_attribuee), u: uniteDe(L, a), date: formatEventDateTime(s.remis_le, "fr") })}</div>
+            <div style={{ fontSize: 12, color: MUTED }}>{s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : ""}{s.remis_par_nom ? ` · ${fill(L.rt_by, { nom: s.remis_par_nom })}` : ""}</div>
+          </div>
+        </div>
+      )}
+      {s.statut === "retenu" && !s.remis_le && ["livre", "cloture"].includes(a.statut) && (
+        <p style={{ fontSize: 13.5, fontWeight: 700, color: AMBER, margin: "0 0 10px" }}>📦 {L.rt_todo}</p>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, fontSize: 13.5 }}>
         <div><div style={{ color: MUTED, fontSize: 12 }}>{s.part_reelle != null ? L.due_real : L.due_est}</div><b>{money(du, devise)}</b></div>
         <div><div style={{ color: MUTED, fontSize: 12 }}>{L.paid}</div><b>{money(paye, devise)}</b></div>
@@ -1383,7 +1396,7 @@ function Releve({ L, t, lang, achats, sous, mouvements, devise, profile, associa
                 <td style={td}>{money(l.du, devise)}</td>
                 <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
                 <td style={{ ...td, fontWeight: 700, color: l.solde < 0 ? RED : TEAL }}>{money(l.solde, devise)}</td>
-                <td style={td}>{l.s.remis_le ? new Date(l.s.remis_le).toLocaleDateString("fr-CA") : "—"}</td>
+                <td style={td}>{l.s.remis_le ? <>✓ {new Date(l.s.remis_le).toLocaleDateString("fr-CA")}{l.s.remise_mode && <div style={{ fontSize: 11, color: MUTED }}>{l.s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: l.s.remis_a_nom || "" }) : L["rm_mode_" + l.s.remise_mode]}</div>}</> : ["livre", "cloture"].includes(l.a.statut) && l.s.statut === "retenu" ? <span style={{ color: AMBER, fontWeight: 600 }}>{L.rt_short}</span> : "—"}</td>
               </tr>
             ))}
           </Table>
