@@ -58,6 +58,8 @@ export const TXT_ACHATS_PLUS = {
     // Facture et paiement
     fa_title: "Facture du fournisseur", fa_add: "Joindre la facture", fa_see: "Voir la facture", fa_none: "Aucune facture jointe.",
     lp_title: "Date limite de paiement", lp_set: "Fixer", lp_help: "Rappels automatiques 3 jours avant ; une part impayée à la date limite est libérée.", lp_current: "Payez avant le {d}",
+    action_ok: "✓ Action enregistrée",
+    lp_done: "Date limite de paiement fixée au {d}. Les souscripteurs ont été prévenus.",
     pay_card: "Payer par carte", pay_card_redirect: "Redirection vers le paiement sécurisé…",
     // Remise
     rm_proxy: "Récupéré par (procuration, facultatif)", rm_proxy_ph: "Nom de la personne qui récupère", rm_full: "Mode distribution plein écran", rm_exit: "Quitter le plein écran",
@@ -118,6 +120,8 @@ export const TXT_ACHATS_PLUS = {
     av_summary: "{f}: quality {q}/5 · timeliness {d}/5 ({n} ratings)", av_mine: "Thank you for your rating.",
     fa_title: "Supplier invoice", fa_add: "Attach the invoice", fa_see: "View invoice", fa_none: "No invoice attached.",
     lp_title: "Payment deadline", lp_set: "Set", lp_help: "Automatic reminders 3 days before; a share unpaid at the deadline is released.", lp_current: "Pay before {d}",
+    action_ok: "✓ Action saved",
+    lp_done: "Payment deadline set to {d}. Subscribers have been notified.",
     pay_card: "Pay by card", pay_card_redirect: "Redirecting to secure payment…",
     rm_proxy: "Collected by (proxy, optional)", rm_proxy_ph: "Name of the person collecting", rm_full: "Full-screen distribution mode", rm_exit: "Exit full screen",
     rm_by_proxy: "collected by {nom}",

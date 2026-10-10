@@ -14,7 +14,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { CheckCircle2, Circle, ArrowRight, Users, FileText, Truck, Star, CalendarClock, CreditCard, Plus, Trash2, ThumbsUp, Award, Copy } from "lucide-react";
 import { supabase } from "./supabaseClient";
-import { Card, Btn, Field, inputStyle, friendlyError, money, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
+import { Card, Btn, Field, inputStyle, friendlyError, money, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED, useLang } from "./shared";
+import { toast } from "./achatsOutils";
 
 const MUTED = "#686F7D";
 const AMBER = "#B7791F";
@@ -23,14 +24,19 @@ const errTxt = (e, t) => (e?.code === "P0001" && e.message ? e.message : friendl
 const petit = { padding: "5px 11px", fontSize: 12 };
 const titreH4 = { margin: "0 0 8px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 };
 
+// Chaque action réussie est confirmée à l'écran (message vert), chaque
+// échec affiché en rouge avec son motif.
+const OK_PAR_DEFAUT = { fr: "✓ Enregistré", en: "✓ Saved" };
 function useRpc(t, onReload) {
+  const { lang } = useLang();
   const [busy, setBusy] = useState(false);
-  return [busy, async (fn, args, confirmMsg) => {
+  return [busy, async (fn, args, confirmMsg, okMsg) => {
     if (confirmMsg && !window.confirm(confirmMsg)) return null;
     setBusy(true);
     const { data, error } = await supabase.rpc(fn, args);
     setBusy(false);
-    if (error) { alert(errTxt(error, t)); return null; }
+    if (error) { toast(errTxt(error, t), true); return null; }
+    toast(okMsg || OK_PAR_DEFAUT[lang === "en" ? "en" : "fr"]);
     onReload?.();
     return data ?? true;
   }];
@@ -381,7 +387,8 @@ export function LimitePaiementPanel({ L, t, lang, a, gestionnaire, onReload }) {
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", margin: "8px 0 12px", padding: 10, background: "#FDF8EE", borderRadius: 10 }}>
       <div style={{ width: 240 }}><Field label={`⏰ ${L.lp_title}`}><input type="datetime-local" style={inputStyle} value={d} onChange={(e) => setD(e.target.value)} /></Field></div>
-      <div style={{ marginBottom: 14 }}><Btn style={petit} disabled={busy || !d} onClick={() => rpc("achats_fixer_limite_paiement", { p_id: a.id, p_date: datetimeLocalToISO(d) })}>{L.lp_set}</Btn></div>
+      <div style={{ marginBottom: 14 }}><Btn style={petit} disabled={busy || !d} onClick={() => rpc("achats_fixer_limite_paiement", { p_id: a.id, p_date: datetimeLocalToISO(d) }, null, "✓ " + fill(L.lp_done, { d: formatEventDateTime(datetimeLocalToISO(d), lang) }))}>{L.lp_set}</Btn></div>
+      {a.date_limite_paiement && <p style={{ fontSize: 13, fontWeight: 700, color: TEAL, margin: "0 0 14px", width: "100%" }}>✓ {fill(L.lp_done, { d: formatEventDateTime(a.date_limite_paiement, lang) })}</p>}
       <p style={{ fontSize: 12, color: MUTED, margin: "0 0 14px", flex: 1, minWidth: 200 }}>{L.lp_help}</p>
     </div>
   );

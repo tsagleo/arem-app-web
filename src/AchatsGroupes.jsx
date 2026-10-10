@@ -31,7 +31,7 @@ import { supabase } from "./supabaseClient";
 import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
 import { AccesPanel, FriseAchat, SondagePanel, DevisPanel, CreneauxPanel, SuiviPanel, AvisPanel, NoteFournisseur, FacturePanel, LimitePaiementPanel, PayerCarte, RemiseVisuelle } from "./AchatsPlus.jsx";
 import { TXT_ACHATS_PLUS } from "./achatsTextes";
-import { bip } from "./achatsOutils";
+import { bip, toast } from "./achatsOutils";
 import {
   Section, Container, Card, Btn, Field, Table, td, inputStyle, useLang, friendlyError, money,
   formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED,
@@ -952,8 +952,11 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
     setBusy(true); setMsg(null);
     const { data, error } = await supabase.rpc(fn, args);
     setBusy(false);
-    if (error) { setMsg({ tone: "warn", text: errTxt(error, t) }); return null; }
-    if (okMsg) setMsg({ text: typeof okMsg === "function" ? okMsg(data) : okMsg });
+    if (error) { setMsg({ tone: "warn", text: errTxt(error, t) }); toast(errTxt(error, t), true); return null; }
+    const texteOk = okMsg ? (typeof okMsg === "function" ? okMsg(data) : okMsg) : null;
+    if (texteOk) setMsg({ text: texteOk });
+    // Confirmation visible de toute action réussie (demandé par l'utilisateur).
+    toast(texteOk ? `✓ ${texteOk}` : L.action_ok);
     onReload();
     return data ?? true;
   }
@@ -1528,7 +1531,8 @@ export default function AchatsGroupes({ profile, isBureau, association }) {
 
   async function actionGlobale(fn, args) {
     const { error } = await supabase.rpc(fn, args);
-    if (error) alert(errTxt(error, t));
+    if (error) toast(errTxt(error, t), true);
+    else toast(L.action_ok);
     load();
   }
 
