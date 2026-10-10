@@ -526,7 +526,7 @@ function telechargerCSV(fichier, head, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function exporterPDF({ association, titre, sousTitre, lignes = [], tableaux = [], fichier }) {
+async function exporterPDF({ association, titre, sousTitre, lignes = [], tableaux = [], fichier, signatures = null, sortie = "telecharger" }) {
   const [jsPDFmod, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
   const { jsPDF } = jsPDFmod;
   const autoTable = autoTableMod.default || autoTableMod;
@@ -546,10 +546,153 @@ async function exporterPDF({ association, titre, sousTitre, lignes = [], tableau
     autoTable(doc, { startY: y, head: [tb.head], body: tb.body, styles: { fontSize: 8.5 }, headStyles: { fillColor: couleurAssociation(association) }, margin: { left: x, right: x } });
     y = (doc.lastAutoTable?.finalY || y) + 14;
   }
+  // Cadres de signature (PV de clôture) : signature électronique + ligne manuscrite facultative.
+  if (signatures) {
+    const H = doc.internal.pageSize.getHeight();
+    if (y + 100 > H - 50) { doc.addPage(); y = 50; }
+    const BW = 330;
+    signatures.forEach((sg, i) => {
+      const bx = x + i * (BW + 30);
+      doc.setDrawColor(...couleurAssociation(association)); doc.setLineWidth(0.7); doc.roundedRect(bx, y, BW, 86, 4, 4, "S");
+      doc.setTextColor(0); doc.setFont(undefined, "bold"); doc.setFontSize(10); doc.text(sg.titre, bx + 10, y + 16);
+      doc.setFontSize(8.5);
+      if (sg.signe) {
+        doc.text(doc.splitTextToSize(sg.signe, BW - 20).slice(0, 2), bx + 10, y + 32);
+        doc.setFont(undefined, "normal"); doc.setFontSize(7); doc.text(sg.empreinte || "", bx + 10, y + 52);
+      } else {
+        doc.setFont(undefined, "italic"); doc.text(sg.attente || "", bx + 10, y + 34);
+      }
+      doc.setDrawColor(0); doc.line(bx + 10, y + 66, bx + BW - 10, y + 66);
+      doc.setFont(undefined, "italic"); doc.setFontSize(7.5); doc.text(sg.manuel || "", bx + 10, y + 77);
+      doc.setFont(undefined, "normal");
+    });
+    y += 100;
+  }
   doc.setFontSize(8); doc.setTextColor(120);
   doc.text(new Date().toLocaleString("fr-CA"), x, doc.internal.pageSize.getHeight() - 20);
   piedsDePageOfficiels(doc, association, { marge: x, texte: titre, libellePage: (p, n) => `${p} / ${n}` });
+  if (sortie === "blob") return doc.output("blob");
   doc.save(fichier);
+  return null;
+}
+
+// ---------- Reçu d'un membre pour un achat (2026-10-10) ----------
+function exporterRecu({ L, a, s, mouvements, association, devise }) {
+  const mv = mouvements.filter((m) => m.achat_id === a.id && m.member_id === s.member_id && m.statut === "valide");
+  const du = duDe(s, a);
+  const paye = r2(mv.reduce((n, m) => n + (m.sens === "entree" ? 1 : m.sens === "sortie" ? -1 : 0) * Number(m.montant), 0));
+  const u = uniteDe(L, a, s.quantite_attribuee);
+  return exporterPDF({
+    association, titre: L.recu_titre, sousTitre: `${a.titre} — ${s.member_nom}`, fichier: `recu_${nomFichier(a.titre)}_${nomFichier(s.member_nom)}.pdf`,
+    lignes: [
+      fill(L.recu_l1, { nom: s.member_nom, q: fmtQ(s.quantite_attribuee), u, a: a.titre, f: a.fournisseur || "—" }),
+      fill(L.recu_l2, { du: money(du, devise), p: money(paye, devise), s: money(r2(paye - du), devise) }),
+      s.remis_le ? fill(L.recu_l3, { d: new Date(s.remis_le).toLocaleString("fr-CA"), m: s.remise_mode ? (s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : L["rm_mode_" + s.remise_mode]) : "" }) : L.recu_l3_non,
+      L.recu_note,
+    ],
+    tableaux: [{ titre: L.recu_paiements, head: [L.col_date, L.col_kind, L.col_mode, L.col_amount, L.col_received, L.col_validated],
+      body: mv.map((m) => [new Date(m.valide_le || m.declare_le).toLocaleDateString("fr-CA"), `${L[`k_${m.sens}`]} (${L[`o_${m.objet}`]})`, L[`mo_${m.mode}`] || m.mode, money(m.montant, devise), m.recu_par_nom || "", m.valide_par_nom || ""]) }],
+  });
+}
+
+// ---------- Procès-verbal de clôture (2026-10-10) ----------
+function exporterPvCloture({ L, a, sous, mouvements, association, devise, signatures, sortie }) {
+  const retenus = sous.filter((s) => s.statut === "retenu");
+  const mv = mouvements.filter((m) => m.achat_id === a.id && m.statut === "valide");
+  const total = r2(Number(a.cout_reel_produits) + Number(a.frais_communs_reels));
+  const unitaire = Number(a.total_attribue) > 0 ? r2(total / Number(a.total_attribue)) : 0;
+  const estime = r2(Number(a.prix_unitaire) * Number(a.total_attribue) + Number(a.frais_estimes || 0));
+  const sig = (role, titre) => {
+    const x = signatures.find((g) => g.role === role);
+    return { titre, signe: x ? fill(L.pv_signe, { nom: x.nom || "", d: new Date(x.signe_le).toLocaleString("fr-CA") }) : null, empreinte: x ? fill(L.pv_empreinte, { h: String(x.empreinte).slice(0, 16) }) : "", attente: L.pv_attente, manuel: L.pv_manuel };
+  };
+  return exporterPDF({
+    association, titre: L.pv_titre, sousTitre: a.titre, fichier: `PV_cloture_${nomFichier(a.titre)}.pdf`, sortie,
+    lignes: [
+      fill(L.pv_l1, { f: a.fournisseur || "—", p: a.porteur_nom || "—", n: retenus.length, q: fmtQ(a.total_attribue), u: uniteDe(L, a, a.total_attribue) }),
+      fill(L.pv_l2, { c: a.commande_le ? new Date(a.commande_le).toLocaleDateString("fr-CA") : "—", l: a.livre_le ? new Date(a.livre_le).toLocaleDateString("fr-CA") : "—", b: a.bilan_valide_le ? new Date(a.bilan_valide_le).toLocaleDateString("fr-CA") : "—", v: a.bilan_valide_par_nom || "—" }),
+      fill(L.pv_l3, { e: money(estime, devise), p: money(a.cout_reel_produits, devise), fr: money(a.frais_communs_reels, devise), t: money(total, devise), u: money(unitaire, devise), d: a.prix_detail ? `${Math.round((1 - unitaire / Number(a.prix_detail)) * 100)} %` : "—" }),
+      a.accord_depassement ? fill(L.pv_accord, { m: a.accord_depassement }) : "",
+      L.pv_l4,
+    ].filter(Boolean),
+    tableaux: [
+      { titre: L.subs_title, head: [L.col_member, L.col_alloc, L.col_est, L.col_real, L.col_paid, L.col_handover],
+        body: retenus.map((s) => {
+          const paye = r2(mv.filter((m) => m.member_id === s.member_id).reduce((n, m) => n + (m.sens === "entree" ? 1 : m.sens === "sortie" ? -1 : 0) * Number(m.montant), 0));
+          return [s.member_nom, fmtQ(s.quantite_attribuee), money(s.montant_du, devise), money(s.part_reelle ?? s.montant_du, devise), money(paye, devise),
+            s.remis_le ? `${new Date(s.remis_le).toLocaleDateString("fr-CA")}${s.remise_mode ? ` (${s.remise_mode})` : ""}` : "—"];
+        }) },
+      { titre: L.mvts_title, head: [L.col_date, L.col_member, L.col_kind, L.col_mode, L.col_amount, L.col_received, L.col_validated],
+        body: mv.map((m) => [new Date(m.valide_le || m.declare_le).toLocaleDateString("fr-CA"), m.member_nom, `${L[`k_${m.sens}`]} (${L[`o_${m.objet}`]})`, L[`mo_${m.mode}`] || m.mode, money(m.montant, devise), m.recu_par_nom || "", m.valide_par_nom || ""]) },
+    ],
+    signatures: [sig("porteur", L.pv_sig_porteur), sig("valideur", L.pv_sig_valideur)],
+  });
+}
+
+function PanneauPV({ L, t, a, sous, mouvements, association, devise, profile, gestionnaire, isBureau, onReload }) {
+  const [sigs, setSigs] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const charger = useCallback(async () => {
+    const { data, error } = await supabase.from("achats_pv_signatures").select("*").eq("achat_id", a.id);
+    if (!error) setSigs(data || []);
+  }, [a.id]);
+  useEffect(() => { charger(); }, [charger]);
+  const archiver = useCallback(async (liste) => {
+    // Archivage dans Documents (rubrique Finances) dès les deux signatures posées.
+    try {
+      const blob = await exporterPvCloture({ L, a, sous, mouvements, association, devise, signatures: liste, sortie: "blob" });
+      const nom = `PV_cloture_${nomFichier(a.titre)}.pdf`;
+      const path = `${profile.association_id}/${Date.now()}_${nom}`;
+      const { error: upErr } = await supabase.storage.from("documents").upload(path, blob, { contentType: "application/pdf" });
+      if (upErr) throw upErr;
+      const { data: doc, error } = await supabase.from("documents").insert({ association_id: profile.association_id, nom: `${L.pv_titre} — ${a.titre}`, storage_path: path, rubrique: "finances", uploaded_by: profile.id }).select().single();
+      if (error) throw error;
+      const { error: e3 } = await supabase.rpc("achats_lier_pv", { p_id: a.id, p_document: doc.id });
+      if (e3) throw e3;
+      toast(L.pv_archive_ok);
+      onReload();
+    } catch (e) { setMsg({ tone: "warn", text: errTxt(e, t) }); }
+  }, [L, a, sous, mouvements, association, devise, profile, t, onReload]);
+  if (a.statut !== "cloture") return null;
+  const deSig = (role) => sigs.find((g) => g.role === role);
+  const estValideur = a.bilan_valide_par === profile.id;
+  async function signer(role) {
+    const libelle = role === "porteur" ? L.pv_sig_porteur : L.pv_sig_valideur;
+    if (!window.confirm(fill(L.pv_confirm, { nom: profile.nom_complet || "", role: libelle, a: a.titre }))) return;
+    setBusy(true); setMsg(null);
+    const { error } = await supabase.rpc("achats_signer_pv", { p_id: a.id, p_role: role });
+    setBusy(false);
+    if (error) { setMsg({ tone: "warn", text: errTxt(error, t) }); toast(errTxt(error, t), true); return; }
+    toast(L.pv_signe_ok);
+    const { data } = await supabase.from("achats_pv_signatures").select("*").eq("achat_id", a.id);
+    setSigs(data || []);
+    if ((data || []).length >= 2 && !a.pv_document_id) await archiver(data);
+  }
+  const deux = sigs.length >= 2;
+  return (
+    <Card style={{ marginBottom: 16, borderTopColor: deux ? TEAL : AMBER }}>
+      <h4 style={{ margin: "0 0 8px", fontSize: 14.5, display: "flex", alignItems: "center", gap: 6 }}><FileDown size={15} /> {L.pv_titre}</h4>
+      {[["porteur", L.pv_sig_porteur, gestionnaire], ["valideur", L.pv_sig_valideur, estValideur]].map(([role, lib, peut]) => {
+        const g = deSig(role);
+        return (
+          <div key={role} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 13, padding: "4px 0" }}>
+            {g ? <CheckCircle2 size={15} color={TEAL} /> : <Lock size={14} color={AMBER} />}
+            <b>{lib}</b>
+            <span style={{ color: g ? TEAL : AMBER }}>{g ? fill(L.pv_signe, { nom: g.nom || "", d: formatEventDateTime(g.signe_le, "fr") }) : L.pv_attente}</span>
+            {!g && peut && !sigs.some((x) => x.profile_id === profile.id) && <Btn style={petitBtn} disabled={busy} onClick={() => signer(role)}>✍️ {L.pv_signer}</Btn>}
+          </div>
+        );
+      })}
+      <div style={{ ...ligneBtns, marginTop: 8 }}>
+        <Btn variant="outline" style={petitBtn} onClick={() => exporterPvCloture({ L, a, sous, mouvements, association, devise, signatures: sigs }).catch((e) => alert(errTxt(e, t)))}><FileDown size={13} /> {L.pv_pdf}</Btn>
+        {a.pv_document_id ? <span style={{ fontSize: 12.5, color: TEAL, fontWeight: 600 }}>✓ {L.pv_archive}</span>
+          : deux && (isBureau || gestionnaire) && <Btn style={petitBtn} disabled={busy} onClick={() => archiver(sigs)}>{L.pv_archiver}</Btn>}
+      </div>
+      {!deux && <p style={{ fontSize: 12, color: MUTED, margin: "8px 0 0" }}>{L.pv_aide}</p>}
+      <Message msg={msg} />
+    </Card>
+  );
 }
 
 const nomFichier = (s) => (s || "achat").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 40);
@@ -936,6 +1079,11 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction
             : <b style={{ color: solde < 0 ? RED : TEAL }}>{solde < 0 ? fill(L.to_pay, { m: money(-r2(solde + attente), devise) }) : solde > 0 ? fill(L.owed, { m: money(solde, devise) }) : L.settled}</b>}
         </div>
       </div>
+      {s.statut === "retenu" && paye > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <Btn variant="outline" style={petitBtn} onClick={() => exporterRecu({ L, a, s, mouvements, association, devise }).catch((e) => alert(errTxt(e, t)))}><FileDown size={13} /> {L.recu_btn}</Btn>
+        </div>
+      )}
       {s.part_reelle != null && Math.abs(r2(Number(s.part_reelle) - Number(s.montant_du))) > 0.004 && (
         <div style={{ marginTop: 12, padding: 12, background: "#FDF8EE", borderRadius: 10, fontSize: 13 }}>
           <b>{Number(s.part_reelle) > Number(s.montant_du) ? L.ec_pourquoi_plus : L.ec_pourquoi_moins}</b>
@@ -1224,6 +1372,8 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       <AvisPanel L={L} t={t} a={a} maSous={maSous} onReload={onReload} />
       {!gestionnaire && <LimitePaiementPanel L={L} t={t} lang={lang} a={a} gestionnaire={false} onReload={onReload} />}
 
+      <PanneauPV L={L} t={t} a={a} sous={sous} mouvements={mouvements} association={association} devise={devise} profile={profile} gestionnaire={gestionnaire} isBureau={isBureau} onReload={onReload} />
+
       {/* Transparence (2026-10-10) : chaque souscripteur voit le bilan réel et la facture. */}
       {!gestionnaire && !isBureau && maSous?.statut === "retenu" && a.bilan_valide_le && (
         <Card style={{ marginBottom: 16 }}>
@@ -1352,6 +1502,9 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                         )}
                         {gestionnaire && ["ouvert", "confirme"].includes(a.statut) && ["inscrit", "retenu"].includes(s.statut) && (
                           <Btn variant="outline" style={petitBtn} onClick={() => { const m = window.prompt(L.remove_prompt); if (m && m.trim()) action("achats_retirer_souscripteur", { p_sous: s.id, p_motif: m.trim() }); }}>{L.remove}</Btn>
+                        )}
+                        {(gestionnaire || isBureau) && s.statut === "retenu" && l.paye > 0 && (
+                          <Btn variant="outline" style={petitBtn} onClick={() => exporterRecu({ L, a, s, mouvements, association, devise }).catch((e) => alert(errTxt(e, t)))}><FileDown size={12} /> {L.recu_court}</Btn>
                         )}
                         {gestionnaire && ["livre", "cloture"].includes(a.statut) && s.statut === "retenu" && !s.remis_le && (
                           <Btn style={petitBtn} onClick={() => {
