@@ -122,6 +122,11 @@ const TXT = {
     owed: "Trop-perçu : {m} — à rembourser ou à convertir en avoir",
     settled: "Réglé ✓",
     pay_interac: "J'ai payé par Interac",
+    pay_modes: "Comment payer ma part", pay_when: "Le paiement s'ouvre à la clôture des souscriptions, si le seuil est atteint. Rien à payer avant : si l'achat est annulé, personne ne paie.",
+    pay_est: "Part estimée à ce jour : {m}",
+    pm_interac: "Virement Interac{dest} — puis cliquez sur « J'ai payé par Interac » et joignez la capture.",
+    pm_cash: "Espèces ou virement remis au porteur{nom} — il enregistre le paiement, un autre membre du bureau le valide.",
+    pm_credit: "Avoir : un trop-perçu d'un achat précédent peut servir à payer.",
     pay_interac_help: "Envoyez le virement Interac au trésorier, puis joignez la capture d'écran ici.",
     proof: "Capture du virement",
     reference: "Référence (facultatif)",
@@ -320,6 +325,11 @@ const TXT = {
     owed: "Overpaid: {m} — to be refunded or turned into a credit",
     settled: "Settled ✓",
     pay_interac: "I paid by Interac",
+    pay_modes: "How to pay my share", pay_when: "Payment opens when subscriptions close, if the threshold is reached. Nothing to pay before: if the purchase is cancelled, nobody pays.",
+    pay_est: "Estimated share so far: {m}",
+    pm_interac: "Interac transfer{dest} — then click \"I paid by Interac\" and attach the screenshot.",
+    pm_cash: "Cash or transfer handed to the carrier{nom} — they record it, another board member validates it.",
+    pm_credit: "Credit: an overpayment from a previous purchase can be used to pay.",
     pay_interac_help: "Send the Interac transfer to the treasurer, then attach the screenshot here.",
     proof: "Transfer screenshot",
     reference: "Reference (optional)",
@@ -777,7 +787,20 @@ function TableMouvements({ L, t, lang, mouvements, devise, achatsParId, profile,
 }
 
 // ---------- Bloc « Ma part » d'un membre ----------
-function MaPart({ L, t, a, s, mouvements, devise, profile, onAction, onReload }) {
+// 2026-10-10 (signalé par l'utilisateur : « il n'y a pas de mode de paiement
+// chez l'adhérent simple ») : les modes acceptés sont affichés à chaque étape.
+function ModesPaiement({ L, a, association, avoir, devise }) {
+  const dest = association?.interac_email ? ` (${association.interac_email})` : "";
+  return (
+    <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, lineHeight: 1.6 }}>
+      <li>{fill(L.pm_interac, { dest })}</li>
+      <li>{fill(L.pm_cash, { nom: a.porteur_nom ? ` (${a.porteur_nom})` : "" })}</li>
+      <li>{L.pm_credit}{avoir > 0 ? ` — ${money(avoir, devise)}` : ""}</li>
+    </ul>
+  );
+}
+
+function MaPart({ L, t, a, s, mouvements, devise, profile, association, onAction, onReload }) {
   const [showInterac, setShowInterac] = useState(false);
   const [montant, setMontant] = useState("");
   const [fichier, setFichier] = useState(null);
@@ -825,6 +848,12 @@ function MaPart({ L, t, a, s, mouvements, devise, profile, onAction, onReload })
         </div>
       </div>
       <Message msg={msg} />
+      {peutPayer && (
+        <div style={{ marginTop: 12, padding: 12, background: "#F4F8F6", borderRadius: 10 }}>
+          <b style={{ fontSize: 13.5 }}>{L.pay_modes}</b>
+          <ModesPaiement L={L} a={a} association={association} avoir={avoir} devise={devise} />
+        </div>
+      )}
       {peutPayer && (
         <div style={{ ...ligneBtns, marginTop: 12 }}>
           <Btn onClick={() => { setShowInterac((v) => !v); setMontant(String(reste)); }}><Upload size={14} /> {L.pay_interac}</Btn>
@@ -1030,8 +1059,17 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
         </Card>
       )}
 
+      {maSous?.statut === "inscrit" && ["ouvert", "propose"].includes(a.statut) && (
+        <Card style={{ marginBottom: 16, borderTopColor: AMBER }}>
+          <h3 style={{ margin: "0 0 6px", fontSize: 16, display: "flex", alignItems: "center", gap: 8 }}><Wallet size={17} /> {L.pay_modes}</h3>
+          <p style={{ fontSize: 13, margin: "0 0 4px" }}>{L.pay_when}</p>
+          <p style={{ fontSize: 13, fontWeight: 700, margin: "0 0 4px" }}>{fill(L.pay_est, { m: money(Number(maSous.quantite_demandee || 0) * Number(a.prix_unitaire || 0), devise) })}</p>
+          <ModesPaiement L={L} a={a} association={association} avoir={avoirDisponible(mouvements, maSous.member_id)} devise={devise} />
+        </Card>
+      )}
+
       {maSous && ["retenu", "non_retenu", "desiste"].includes(maSous.statut) && (
-        <MaPart L={L} t={t} a={a} s={maSous} mouvements={mouvements} devise={devise} profile={profile} onReload={onReload}
+        <MaPart L={L} t={t} a={a} s={maSous} mouvements={mouvements} devise={devise} profile={profile} association={association} onReload={onReload}
           onAction={(fn, args, c) => action(fn, args, c)} />
       )}
 
