@@ -90,6 +90,8 @@ export function SondagePanel({ L, t, a, u, isBureau, gestionnaire, profile, aucu
   const [liste, setListe] = useState([]);
   const [qte, setQte] = useState("");
   const [date, setDate] = useState("");
+  const [mode, setMode] = useState("priorite");
+  const [heures, setHeures] = useState(48);
   const charger = useCallback(async () => {
     const [{ data: tt }, { data: li }] = await Promise.all([
       supabase.rpc("achats_interets_totaux"),
@@ -127,7 +129,9 @@ export function SondagePanel({ L, t, a, u, isBureau, gestionnaire, profile, aucu
       {isBureau && (
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px solid #EEF0F3", paddingTop: 10 }}>
           <div style={{ width: 240 }}><Field label={L.sd_deadline}><input type="datetime-local" style={inputStyle} min={toDatetimeLocal(new Date().toISOString())} value={date} onChange={(e) => setDate(e.target.value)} /></Field></div>
-          <div style={{ marginBottom: 14 }}><Btn disabled={busy || !date} onClick={() => rpc("achats_ouvrir_souscriptions", { p_id: a.id, p_date_limite: datetimeLocalToISO(date) })}>{L.sd_open}</Btn></div>
+          <div style={{ width: 280 }}><Field label={L.ac_mode}><select style={inputStyle} value={mode} onChange={(e) => setMode(e.target.value)}><option value="priorite">{L.ac_priorite}</option><option value="tous">{L.ac_tous}</option><option value="reserve">{L.ac_reserve}</option></select></Field></div>
+          {mode === "priorite" && <div style={{ width: 150 }}><Field label={L.ac_hours}><input type="number" min="1" style={inputStyle} value={heures} onChange={(e) => setHeures(e.target.value)} /></Field></div>}
+          <div style={{ marginBottom: 14 }}><Btn disabled={busy || !date} onClick={() => rpc("achats_ouvrir_souscriptions", { p_id: a.id, p_date_limite: datetimeLocalToISO(date), p_mode: mode, p_heures: Number(heures) || 48 })}>{L.sd_open}</Btn></div>
         </div>
       )}
     </Card>
@@ -456,3 +460,66 @@ export function DoublonsMembres({ L, t, lang, onMerged }) {
   );
 }
 
+
+// =====================================================================
+// Accès aux souscriptions après le sondage : bandeau, rattrapage, retour
+// arrière (sql/2026-10-10q). onAcces(peutSouscrire, quantiteProposee).
+// =====================================================================
+export function AccesPanel({ L, t, lang, a, isBureau, gestionnaire, profile, aucunInscrit, onAcces, onReload }) {
+  const [interets, setInterets] = useState([]);
+  const [qte, setQte] = useState("");
+  const charger = useCallback(async () => {
+    const { data } = await supabase.from("achats_interets").select("*").eq("achat_id", a.id);
+    setInterets(data || []);
+  }, [a.id]);
+  const [busy, rpc] = useRpc(t, () => { charger(); onReload(); });
+  useEffect(() => { if (a.statut === "ouvert") charger(); }, [a.statut, charger]);
+  const mode = a.acces_mode || "tous";
+  const prioriteActive = mode === "priorite" && a.priorite_jusqu_au && new Date(a.priorite_jusqu_au) > new Date();
+  const restreint = mode === "reserve" || prioriteActive;
+  const mien = interets.find((x) => x.member_id === profile.member_id);
+  const accepte = !!mien?.accepte;
+  useEffect(() => { onAcces?.(!restreint || accepte, mien?.accepte ? Number(mien.quantite) : null); }, [restreint, accepte, mien, onAcces]);
+  if (a.statut !== "ouvert") return null;
+  const demandes = interets.filter((x) => x.tardif && !x.accepte);
+  if (!restreint && !isBureau) return null;
+  return (
+    <Card style={{ marginBottom: 16, borderTopColor: restreint ? "#6B3FA0" : TEAL }}>
+      {restreint && (
+        <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700, color: "#6B3FA0" }}>
+          🔒 {mode === "reserve" ? L.ac_banner_reserve : fill(L.ac_banner_priorite, { d: formatEventDateTime(a.priorite_jusqu_au, lang) })}
+        </p>
+      )}
+      {restreint && profile.member_id && (accepte
+        ? <p style={{ fontSize: 13, color: TEAL, fontWeight: 600, margin: "0 0 6px" }}>✓ {L.ac_accepted}</p>
+        : mien ? <p style={{ fontSize: 13, color: AMBER, fontWeight: 600, margin: "0 0 6px" }}>⏳ {L.ac_pending}</p>
+          : (
+            <div style={{ marginBottom: 6 }}>
+              <p style={{ fontSize: 13, margin: "0 0 6px" }}>{L.ac_ask}</p>
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                <div style={{ width: 160 }}><Field label={L.ac_ask_qty}><input type="number" min="0" step="any" style={inputStyle} value={qte} onChange={(e) => setQte(e.target.value)} /></Field></div>
+                <div style={{ marginBottom: 14 }}><Btn disabled={busy || !(Number(qte) > 0)} onClick={async () => { if (await rpc("achats_demander_participation", { p_id: a.id, p_quantite: Number(qte) })) setQte(""); }}>{L.ac_ask_btn}</Btn></div>
+              </div>
+            </div>
+          ))}
+      {gestionnaire && demandes.length > 0 && (
+        <div style={{ borderTop: "1px solid #EEF0F3", paddingTop: 8, marginTop: 6 }}>
+          <b style={{ fontSize: 13 }}>{L.ac_requests} · {demandes.length}</b>
+          {demandes.map((x) => (
+            <div key={x.member_id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0", flexWrap: "wrap", fontSize: 13 }}>
+              <span style={{ flex: 1 }}>{x.member_nom} — {Number(x.quantite)}</span>
+              <Btn style={petit} disabled={busy} onClick={() => rpc("achats_statuer_participation", { p_id: a.id, p_member: x.member_id, p_ok: true })}>{L.ac_accept}</Btn>
+              <button style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12.5, fontWeight: 600 }} onClick={() => rpc("achats_statuer_participation", { p_id: a.id, p_member: x.member_id, p_ok: false })}>{L.ac_refuse}</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {isBureau && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+          {aucunInscrit && <Btn variant="outline" style={petit} disabled={busy} onClick={() => rpc("achats_revenir_au_sondage", { p_id: a.id }, L.ac_back_confirm)}>← {L.ac_back}</Btn>}
+          {restreint && <Btn variant="outline" style={petit} disabled={busy} onClick={() => rpc("achats_changer_acces", { p_id: a.id, p_mode: "tous" }, L.ac_open_all_confirm)}>🔓 {L.ac_open_all}</Btn>}
+        </div>
+      )}
+    </Card>
+  );
+}

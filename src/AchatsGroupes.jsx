@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { enTeteOfficiel, piedsDePageOfficiels, couleurAssociation } from "./pdfOfficiel";
-import { FriseAchat, SondagePanel, DevisPanel, CreneauxPanel, SuiviPanel, AvisPanel, NoteFournisseur, FacturePanel, LimitePaiementPanel, PayerCarte, RemiseVisuelle } from "./AchatsPlus.jsx";
+import { AccesPanel, FriseAchat, SondagePanel, DevisPanel, CreneauxPanel, SuiviPanel, AvisPanel, NoteFournisseur, FacturePanel, LimitePaiementPanel, PayerCarte, RemiseVisuelle } from "./AchatsPlus.jsx";
 import { TXT_ACHATS_PLUS } from "./achatsTextes";
 import { bip } from "./achatsOutils";
 import {
@@ -927,6 +927,10 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
   const [relance, setRelance] = useState(false);
   const [procuration, setProcuration] = useState("");
   const [pleinEcran, setPleinEcran] = useState(false);
+  // Accès après sondage (sql/2026-10-10q) : la quantité du sondage est
+  // proposée d'office ; le formulaire n'apparaît que si l'accès est permis.
+  const [accesOk, setAccesOk] = useState(true);
+  const onAcces = useCallback((ok, q) => { setAccesOk(ok); if (q) setQte((x) => x || String(q)); }, []);
 
   const u = uniteDe(L, a);
   const myMemberId = profile.member_id;
@@ -1084,8 +1088,10 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
       <SondagePanel L={L} t={t} a={a} u={u} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} aucuneSouscription={sousActives.length === 0} onReload={onReload} />
       <DevisPanel L={L} t={t} a={a} u={u} devise={devise} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} onReload={onReload} />
 
+      <AccesPanel L={L} t={t} lang={lang} a={a} isBureau={isBureau} gestionnaire={gestionnaire} profile={profile} aucunInscrit={!sous.some((s) => s.statut === "inscrit")} onAcces={onAcces} onReload={onReload} />
+
       {/* Souscription du membre */}
-      {ouvert && myMemberId && (
+      {ouvert && myMemberId && (accesOk || maSous?.statut === "inscrit") && (
         <Card style={{ marginBottom: 16 }}>
           <h3 style={{ margin: "0 0 8px", fontSize: 16 }}>{L.charte_title}</h3>
           <ol style={{ fontSize: 13, margin: "0 0 10px", paddingLeft: 20, color: "#3D4350" }}>
