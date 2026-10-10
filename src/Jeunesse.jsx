@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { exporterCertificatsBourse } from "./jeunessePdf";
+import CarrefourSavoir from "./CarrefourSavoir.jsx";
 import { Section, Container, Card, Btn, Field, Pill, inputStyle, useLang, friendlyError, foldText, formatEventDateTime, toDatetimeLocal, datetimeLocalToISO, TEAL, TEAL_LIGHT, RED } from "./shared";
 
 const AMBER = "#B7791F";
@@ -39,6 +40,8 @@ const MAX_FILE_MB = 50;
 const TXT = {
   fr: {
     title: "Jeunesse & tutorat",
+    carrefour_title: "Carrefour du savoir",
+    carrefour_intro: "Le carrefour éducatif de l'association : ressources, parcours guidés, classes, entraide et mentorat — pour les élèves, étudiants, universitaires, travailleurs, parents, aînés et nouveaux arrivants.",
     brand: "Unia Campus",
     intro: "Ressources scolaires, mentorat bénévole, séances de tutorat et bourses pour les jeunes de l'association — dans un cadre sûr pour les mineurs.",
     tab_ressources: "Ressources", tab_jeunes: "Jeunes", tab_mentors: "Mentors", tab_jumelages: "Jumelages & séances", tab_bourses: "Bourses & prix", tab_cadre: "Protection & encadrement",
@@ -106,6 +109,7 @@ const TXT = {
     ses_st_prevue: "Prévue", ses_st_realisee: "Réalisée", ses_st_annulee: "Annulée",
     ses_done: "Marquer réalisée", ses_cancel: "Annuler", ses_cancel_confirm: "Annuler cette séance ?",
     ses_report: "Compte rendu de la séance", ses_progress: "Progression (1 à 5)", ses_save_report: "Enregistrer",
+    ses_eval: "Évaluer la séance", ses_eval_note: "Votre satisfaction (1 à 5)", ses_eval_comment: "Commentaire (facultatif)", ses_eval_by: "Évaluée {n}/5 par {nom}",
     msg_placeholder: "Écrire dans le fil du jumelage…", msg_send: "Envoyer", msg_progress: "Point de progression",
     msg_empty: "Aucun échange pour le moment.", progress_avg: "Progression moyenne : {n} / 5",
     role_mentor: "Mentor", role_parent: "Parent", role_etudiant: "Jeune", role_responsable: "Responsable",
@@ -144,6 +148,8 @@ const TXT = {
   },
   en: {
     title: "Youth & tutoring",
+    carrefour_title: "Learning hub",
+    carrefour_intro: "The association's learning hub: resources, guided pathways, classes, peer help and mentoring — for pupils, students, university learners, workers, parents, seniors and newcomers.",
     brand: "Unia Campus",
     intro: "Learning resources, volunteer mentoring, tutoring sessions and scholarships for the association's young people — in a safe setting for minors.",
     tab_ressources: "Resources", tab_jeunes: "Youth", tab_mentors: "Mentors", tab_jumelages: "Matches & sessions", tab_bourses: "Scholarships & awards", tab_cadre: "Safeguarding",
@@ -206,6 +212,7 @@ const TXT = {
     ses_st_prevue: "Planned", ses_st_realisee: "Done", ses_st_annulee: "Cancelled",
     ses_done: "Mark as done", ses_cancel: "Cancel", ses_cancel_confirm: "Cancel this session?",
     ses_report: "Session report", ses_progress: "Progress (1 to 5)", ses_save_report: "Save",
+    ses_eval: "Rate the session", ses_eval_note: "Your satisfaction (1 to 5)", ses_eval_comment: "Comment (optional)", ses_eval_by: "Rated {n}/5 by {nom}",
     msg_placeholder: "Write in the match thread…", msg_send: "Send", msg_progress: "Progress note",
     msg_empty: "No messages yet.", progress_avg: "Average progress: {n} / 5",
     role_mentor: "Mentor", role_parent: "Parent", role_etudiant: "Student", role_responsable: "Youth lead",
@@ -834,8 +841,18 @@ function SeanceForm({ L, t, jumelage, etudiant, onClose, onSaved }) {
   );
 }
 
-function SeanceLigne({ L, t, lang, s, canManage, canCancel, onChanged }) {
+function SeanceLigne({ L, t, lang, s, canManage, canCancel, canEvaluate, onChanged }) {
   const [open, setOpen] = useState(false);
+  // Évaluation de la séance par le jeune ou son parent (sql/2026-10-10m).
+  const [evalOpen, setEvalOpen] = useState(false);
+  const [evalNote, setEvalNote] = useState(5);
+  const [evalCom, setEvalCom] = useState("");
+  async function evaluer() {
+    const { error } = await supabase.rpc("jeunesse_evaluer_seance", { p_seance_id: s.id, p_note: Number(evalNote), p_commentaire: evalCom });
+    if (error) { alert(friendlyError(error, t)); return; }
+    setEvalOpen(false);
+    onChanged();
+  }
   const [cr, setCr] = useState(s.compte_rendu || "");
   const [prog, setProg] = useState(s.progression || 3);
   async function cloturer(statut) {
@@ -864,9 +881,20 @@ function SeanceLigne({ L, t, lang, s, canManage, canCancel, onChanged }) {
           )}
           {s.statut === "prevue" && canManage && <button onClick={() => setOpen(!open)} style={btnLink(TEAL)}>{L.ses_done}</button>}
           {s.statut === "prevue" && canCancel && <button onClick={() => cloturer("annulee")} style={btnLink(RED)}>{L.ses_cancel}</button>}
+          {s.statut === "realisee" && canEvaluate && !s.eval_note && <button onClick={() => setEvalOpen(!evalOpen)} style={btnLink(AMBER)}><Star size={12} /> {L.ses_eval}</button>}
         </div>
       </div>
       {s.compte_rendu && <p style={{ ...muted, margin: "4px 0 0 21px", whiteSpace: "pre-wrap" }}>{s.compte_rendu}</p>}
+      {s.eval_note && <p style={{ ...muted, margin: "4px 0 0 21px", color: AMBER }}>★ {L.ses_eval_by.replace("{n}", s.eval_note).replace("{nom}", s.eval_par_nom || "—")}{s.eval_commentaire ? ` — « ${s.eval_commentaire} »` : ""}</p>}
+      {evalOpen && (
+        <div style={{ background: "#FDF8EE", borderRadius: 8, padding: 10, marginTop: 6 }}>
+          <Field label={L.ses_eval_note}>
+            <select style={{ ...inputStyle, width: 120 }} value={evalNote} onChange={(e) => setEvalNote(e.target.value)}>{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)} {n}</option>)}</select>
+          </Field>
+          <Field label={L.ses_eval_comment}><textarea style={{ ...inputStyle, minHeight: 50 }} maxLength={1000} value={evalCom} onChange={(e) => setEvalCom(e.target.value)} /></Field>
+          <Btn style={small} onClick={evaluer}>{L.ses_save_report}</Btn>
+        </div>
+      )}
       {open && (
         <div style={{ background: "#F8F7F4", borderRadius: 8, padding: 10, marginTop: 6 }}>
           <Field label={L.ses_report}><textarea style={{ ...inputStyle, minHeight: 60 }} maxLength={2000} value={cr} onChange={(e) => setCr(e.target.value)} /></Field>
@@ -1041,7 +1069,7 @@ function JumelagesTab({ L, t, lang, profile, isResp, etudiants, mentors, jumelag
                   </div>
                   {sj.length === 0 && <p style={muted}>{L.jum_no_session}</p>}
                   {sj.map((s) => (
-                    <SeanceLigne key={s.id} L={L} t={t} lang={lang} s={s} canManage={isResp || estMentor} canCancel={isResp || estMentor || estFamille} onChanged={onChanged} />
+                    <SeanceLigne key={s.id} L={L} t={t} lang={lang} s={s} canManage={isResp || estMentor} canCancel={isResp || estMentor || estFamille} canEvaluate={estFamille || isResp} onChanged={onChanged} />
                   ))}
                   <FilJumelage L={L} t={t} lang={lang} jumelage={j} messages={mj}
                     canWrite={isResp || (j.statut === "actif" && (estMentor || estFamille))}
@@ -1346,6 +1374,9 @@ export default function Jeunesse({ profile, isBureau, association }) {
   const { t, lang } = useLang();
   const L = TXT[lang === "en" ? "en" : "fr"];
   const [tab, setTab] = useState("ressources");
+  // 2026-10-10 : la rubrique s'ouvre sur le Carrefour du savoir (ouvert à
+  // tous) ; les outils jeunesse restent dans leur propre espace protégé.
+  const [espace, setEspace] = useState("carrefour");
   const [loading, setLoading] = useState(true);
   const [missing, setMissing] = useState(false);
   const [d, setD] = useState({
@@ -1412,11 +1443,19 @@ export default function Jeunesse({ profile, isBureau, association }) {
         <datalist id="jeunesse-matieres">{MATIERES_SUGG.map((m) => <option key={m} value={m} />)}</datalist>
         <div style={{ marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <h2 style={{ fontSize: 22, margin: 0, display: "flex", alignItems: "center", gap: 10 }}><GraduationCap size={24} /> {L.title}</h2>
+            <h2 style={{ fontSize: 22, margin: 0, display: "flex", alignItems: "center", gap: 10 }}><GraduationCap size={24} /> {espace === "carrefour" ? L.carrefour_title : L.title}</h2>
             <Pill>{L.brand}</Pill>
           </div>
-          <p style={{ fontSize: 13, color: GREY, margin: "6px 0 0", maxWidth: 680 }}>{L.intro}</p>
+          <p style={{ fontSize: 13, color: GREY, margin: "6px 0 0", maxWidth: 680 }}>{espace === "carrefour" ? L.carrefour_intro : L.intro}</p>
+          <div style={{ display: "inline-flex", gap: 4, background: "#ECEEF2", borderRadius: 12, padding: 4, marginTop: 12 }}>
+            {[["carrefour", L.carrefour_title], ["jeunesse", L.title]].map(([id, label]) => (
+              <button key={id} onClick={() => setEspace(id)} style={{ border: "none", cursor: "pointer", borderRadius: 9, padding: "8px 16px", fontSize: 13.5, fontWeight: 700, background: espace === id ? "white" : "transparent", color: espace === id ? "var(--primary)" : GREY, boxShadow: espace === id ? "0 1px 4px rgba(0,0,0,.08)" : "none" }}>{label}</button>
+            ))}
+          </div>
         </div>
+
+        {espace === "carrefour" && <CarrefourSavoir t={t} lang={lang} profile={profile} gest={isResp} association={association} jeunesse={d} onGoJeunesse={() => setEspace("jeunesse")} />}
+        {espace === "jeunesse" && <>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 18 }}>
           {[
@@ -1448,6 +1487,7 @@ export default function Jeunesse({ profile, isBureau, association }) {
         {tab === "jumelages" && <JumelagesTab L={L} t={t} lang={lang} profile={profile} isResp={isResp} etudiants={d.etudiants} mentors={d.mentors} jumelages={d.jumelages} seances={d.seances} messages={d.messages} onChanged={load} />}
         {tab === "bourses" && <BoursesTab association={association} L={L} t={t} lang={lang} profile={profile} isResp={isResp} isBureau={isBureau} bourses={d.bourses} candidatures={d.candidatures} etudiants={d.etudiants} tirages={d.tirages} onChanged={load} />}
         {tab === "cadre" && <CadreTab L={L} t={t} isBureau={isBureau} responsables={d.responsables} profiles={d.profiles} onChanged={load} />}
+        </>}
       </Section>
     </Container>
   );

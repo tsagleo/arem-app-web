@@ -2502,7 +2502,7 @@ function MainApp({ profile, association, subscription, onAssociationChange, onPr
     { id: "emploi", label: t("nav_jobs"), roles: ["bureau", "responsable", "adherent"], keywords: ["carrière", "candidature", "bénévolat", "cv"] },
     { id: "sondages", label: t("nav_polls"), roles: ["bureau", "responsable", "adherent"], keywords: ["vote", "consultation"] },
     { id: "tirages", label: t("nav_draws"), roles: ["bureau", "responsable", "adherent"], keywords: ["tirage", "hasard", "ordre de passage", "tontine", "direct"] },
-    { id: "jeunesse", label: t("nav_jeunesse"), roles: ["bureau", "responsable", "adherent"], keywords: ["tutorat", "mentor", "étudiant", "école", "bourse", "devoirs", "campus", "jeunes"] },
+    { id: "jeunesse", label: t("nav_jeunesse"), roles: ["bureau", "responsable", "adherent"], keywords: ["tutorat", "mentor", "étudiant", "école", "bourse", "devoirs", "campus", "jeunes", "jeunesse", "carrefour", "savoir", "formation", "classe", "cours", "parcours", "emploi", "ressources"] },
     { id: "achats", label: t("nav_achats"), roles: ["bureau", "responsable", "adherent"], keywords: ["achat groupé", "coopérative", "prix de gros", "commande", "colis", "conteneur", "envoi", "ristourne"] },
     { id: "funeraire", label: t("nav_funeraire"), roles: ["bureau", "responsable", "adherent"], keywords: ["décès", "deuil", "condoléances"] },
     { id: "sanctions", label: t("nav_sanctions"), roles: ["bureau", "adherent"], keywords: ["avertissement", "suspension", "discipline"] },

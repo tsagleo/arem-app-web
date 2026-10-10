@@ -10,7 +10,7 @@
 // → Documents officiels) avec la mention de l'attribution enregistrée
 // électroniquement dans l'application, et une ligne manuscrite facultative.
 // =====================================================================
-import { pdfTexte, couleurAssociation, chargerLogo, mentionsLegales } from "./pdfOfficiel";
+import { pdfTexte, couleurAssociation, chargerLogo, mentionsLegales, enTeteOfficiel, piedsDePageOfficiels } from "./pdfOfficiel";
 
 const TXT = {
   fr: {
@@ -109,4 +109,88 @@ export async function exporterCertificatsBourse({ bourse, laureats, association,
     doc.text(pdfTexte(T.ref.replace("{r}", `B-${String(bourse.id).slice(0, 8).toUpperCase()}-${i + 1}`)), W - 48, H - 46, { align: "right" });
   });
   doc.save(fileName || `Certificat_${String(bourse.titre || "prix").replace(/[^A-Za-z0-9]+/g, "_").slice(0, 40)}.pdf`);
+}
+
+// ---------------------------------------------------------------------
+// Attestation / certificat générique (Carrefour du savoir, 2026-10-10) :
+// certificat de parcours, attestation de participation à une classe,
+// attestation d'heures de bénévolat. Même présentation que le certificat
+// de distinction : cadre à la couleur de l'association, logo, mentions
+// légales, signature électronique et ligne manuscrite facultative.
+// lignes : textes affichés sous l'intitulé (détails, heures, dates…)
+// ---------------------------------------------------------------------
+export async function exporterAttestation({ titre, intro, nom, intitule, lignes = [], signataire, association, lang = "fr", reference, fileName }) {
+  const T = TXT[lang === "en" ? "en" : "fr"];
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+  const accent = couleurAssociation(association);
+  const logo = await chargerLogo(association?.logo_url);
+  const legal = mentionsLegales(association).join(" - ");
+  const loc = lang === "en" ? "en-CA" : "fr-CA";
+  const dateLongue = new Date().toLocaleDateString(loc, { day: "numeric", month: "long", year: "numeric" });
+  doc.setDrawColor(...accent); doc.setLineWidth(3); doc.rect(24, 24, W - 48, H - 48, "S");
+  doc.setLineWidth(0.8); doc.rect(32, 32, W - 64, H - 64, "S");
+  let y = 62;
+  if (logo) {
+    const lh = 48, lw = Math.min(lh * logo.ratio, 130);
+    try { doc.addImage(logo.dataUrl, "PNG", (W - lw) / 2, y, lw, lw / logo.ratio); y += lw / logo.ratio + 10; } catch { /* logo illisible */ }
+  }
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
+  doc.text(pdfTexte(association?.nom || ""), W / 2, y + 8, { align: "center" }); y += 22;
+  if (legal) { doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(doc.splitTextToSize(pdfTexte(legal), W - 160).slice(0, 2), W / 2, y, { align: "center" }); y += 16; }
+  doc.setDrawColor(...accent); doc.setLineWidth(1); doc.line(W / 2 - 120, y, W / 2 + 120, y); y += 32;
+  doc.setTextColor(...accent); doc.setFont("helvetica", "bold"); doc.setFontSize(24);
+  doc.text(pdfTexte(titre), W / 2, y, { align: "center" }); y += 28;
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "italic"); doc.setFontSize(12.5);
+  doc.text(pdfTexte(intro), W / 2, y, { align: "center" }); y += 32;
+  doc.setFont("helvetica", "bold"); doc.setFontSize(26);
+  doc.text(pdfTexte(nom), W / 2, y, { align: "center" }); y += 26;
+  if (intitule) {
+    doc.setFontSize(15);
+    const l = doc.splitTextToSize(pdfTexte(intitule), W - 200).slice(0, 2);
+    doc.text(l, W / 2, y, { align: "center" }); y += l.length * 18 + 4;
+  }
+  doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+  lignes.filter(Boolean).forEach((x) => { doc.text(doc.splitTextToSize(pdfTexte(x), W - 200)[0], W / 2, y, { align: "center" }); y += 15; });
+  const BW = 240, bx = (W - BW) / 2, by = H - 148;
+  doc.setDrawColor(...accent); doc.setLineWidth(0.6); doc.roundedRect(bx, by, BW, 72, 4, 4, "S");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+  doc.text(pdfTexte(signataire?.nom || T.signataire), bx + 10, by + 15);
+  doc.setFont("helvetica", "italic"); doc.setFontSize(8.5);
+  if (signataire?.titre) doc.text(pdfTexte(signataire.titre), bx + 10, by + 27);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.text(pdfTexte((lang === "en" ? "Issued electronically from the application on {d}" : "Délivrée électroniquement depuis l'application le {d}").replace("{d}", dateLongue)), bx + 10, by + 40);
+  doc.setDrawColor(0, 0, 0); doc.line(bx + 10, by + 56, bx + BW - 10, by + 56);
+  doc.setFont("helvetica", "italic"); doc.setFontSize(7); doc.text(pdfTexte(T.manuel), bx + 10, by + 66);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9);
+  doc.text(pdfTexte(T.fait.replace("{d}", dateLongue)), 48, H - 46);
+  if (reference) doc.text(pdfTexte(T.ref.replace("{r}", reference)), W - 48, H - 46, { align: "right" });
+  doc.save(fileName || "attestation.pdf");
+}
+
+// ---------------------------------------------------------------------
+// Rapport d'impact (portrait) : indicateurs + tableaux, pour le rapport
+// annuel et les demandes de subvention.
+// sections : [{ titre, lignes: [[libellé, valeur], …] }]
+// ---------------------------------------------------------------------
+export async function exporterRapportImpact({ titre, sousTitre, sections, association, fileName }) {
+  const [{ jsPDF }, autoTableMod] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+  const autoTable = autoTableMod.default || autoTableMod;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const M = 50;
+  let y = await enTeteOfficiel(doc, association, { titre, sousTitre, marge: M });
+  sections.forEach((sec) => {
+    autoTable(doc, {
+      startY: y + 6, head: [[pdfTexte(sec.titre), ""]], body: sec.lignes.map(([a, b]) => [pdfTexte(a), pdfTexte(String(b))]),
+      theme: "plain", margin: { left: M, right: M },
+      styles: { font: "helvetica", fontSize: 10, cellPadding: 5, textColor: [0, 0, 0] },
+      headStyles: { fontStyle: "bold", fillColor: couleurAssociation(association), textColor: [255, 255, 255] },
+      columnStyles: { 1: { halign: "right", fontStyle: "bold", cellWidth: 140 } },
+      alternateRowStyles: { fillColor: [246, 247, 249] },
+    });
+    y = doc.lastAutoTable.finalY + 10;
+  });
+  piedsDePageOfficiels(doc, association, { marge: M, texte: titre });
+  doc.save(fileName || "rapport_impact.pdf");
 }
