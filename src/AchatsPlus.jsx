@@ -49,7 +49,7 @@ const ORDRE = { sondage: 0, propose: 0, ouvert: 1, confirme: 2, commande: 3, liv
 export function FriseAchat({ L, a, maSous, sous, mouvements, gestionnaire, isBureau, profile, devise, aPayer }) {
   const etape = a.statut === "livre" && a.bilan_saisi_le ? 5 : ORDRE[a.statut] ?? 0;
   const retenus = sous.filter((s) => s.statut === "retenu");
-  const aValiderParMoi = mouvements.filter((m) => m.achat_id === a.id && m.statut === "recu" && m.recu_par !== profile.id).length;
+  const aValiderParMoi = mouvements.filter((m) => m.achat_id === a.id && m.statut === "recu" && m.recu_par !== profile.id && m.member_id !== profile.member_id).length;
   const impayes = retenus.filter((s) => s.impaye).length;
   let msg = "";
   if (a.statut === "annule" || a.statut === "refuse") msg = L.n_annule;

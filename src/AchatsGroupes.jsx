@@ -791,7 +791,7 @@ function TableMouvements({ L, t, lang, mouvements, devise, achatsParId, profile,
               <div style={ligneBtns}>
                 {m.preuve_path && (isBureau || gerer) && <Btn variant="outline" style={petitBtn} onClick={() => voirPreuve(m)}><Eye size={12} /> {L.see_proof}</Btn>}
                 {m.statut === "declare" && gerer && <Btn style={petitBtn} onClick={() => onAction("achats_confirmer_reception", { p_mvt: m.id })}>{L.confirm_receipt}</Btn>}
-                {m.statut === "recu" && isBureau && (m.recu_par === profile.id
+                {m.statut === "recu" && isBureau && (m.recu_par === profile.id || m.member_id === profile.member_id
                   ? <span style={{ fontSize: 11.5, color: AMBER }}><Lock size={11} /> {L.other_must_validate}</span>
                   : <Btn style={petitBtn} onClick={() => onAction("achats_valider_mouvement", { p_mvt: m.id })}><ShieldCheck size={12} /> {L.validate}</Btn>)}
                 {(m.statut === "declare" || m.statut === "recu") && gerer && (
@@ -1527,7 +1527,7 @@ export default function AchatsGroupes({ profile, isBureau, association }) {
   const parId = Object.fromEntries(achats.map((a) => [a.id, a]));
   const peutGerer = (a) => !!a && (a.porteur_member_id ? !!profile.member_id && a.porteur_member_id === profile.member_id : a.propose_par === profile.id || profile.role === "bureau_president");
   // Le porteur confirme « reçu » ; un autre membre du bureau valide.
-  const aControler = mouvements.filter((m) => m.achat_id && ((m.statut === "declare" && peutGerer(parId[m.achat_id])) || (m.statut === "recu" && isBureau && m.recu_par !== profile.id)));
+  const aControler = mouvements.filter((m) => m.achat_id && ((m.statut === "declare" && peutGerer(parId[m.achat_id])) || (m.statut === "recu" && isBureau && m.recu_par !== profile.id && m.member_id !== profile.member_id)));
   const achatSel = selection ? parId[selection] : null;
   const onglets = [["achats", L.tab_achats], ["releve", L.tab_releve], ...(isBureau ? [["bilan", L.tab_bilan]] : [])];
 
