@@ -327,7 +327,8 @@ export function AvisPanel({ L, t, a, maSous, onReload }) {
   const [f, setF] = useState({ q: 5, d: 5, c: "" });
   const [envoye, setEnvoye] = useState(false);
   const [busy, rpc] = useRpc(t, onReload);
-  if (!["livre", "cloture"].includes(a.statut) || maSous?.statut !== "retenu") return null;
+  // Avis seulement après avoir reçu sa part.
+  if (!["livre", "cloture"].includes(a.statut) || maSous?.statut !== "retenu" || !maSous.remis_le) return null;
   const sel = (k) => <select style={{ ...inputStyle, width: 120 }} value={f[k]} onChange={(e) => setF({ ...f, [k]: Number(e.target.value) })}>{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)}</option>)}</select>;
   return (
     <Card style={{ marginBottom: 16 }}>
