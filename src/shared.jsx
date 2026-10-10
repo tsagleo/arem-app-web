@@ -766,15 +766,20 @@ export function Table({ head, children, minWidth }) {
   // l'écran (ex. tableau des dons avec les colonnes France/Canada), au lieu
   // de laisser les colonnes se compresser jusqu'à devenir illisibles.
   return (
-    <div className="table-scroll" style={{ overflowX: "auto", borderRadius: 12, boxShadow: "0 4px 18px rgba(31,56,100,0.08)" }}>
-      <table style={{ width: "100%", minWidth, borderCollapse: "collapse", fontSize: 12.5 }}>
-        <thead><tr>{head.map((h) => <th key={h} style={{ textAlign: "left", background: "var(--primary)", color: "white", padding: "7px 9px", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".03em" }}>{h}</th>)}</tr></thead>
+    <div className="table-scroll" style={{ overflowX: "auto", borderRadius: 12, boxShadow: "0 4px 18px rgba(31,56,100,0.08)", background: "white" }}>
+      {/* 2026-10-10 (demandé par l'utilisateur : « un style bien lisible » quand
+          les lignes s'accumulent) : lignes alternées, survol, en-tête et
+          alignement vertical, pour tous les tableaux de l'application. */}
+      <style>{TABLE_CSS}</style>
+      <table className="unia-table" style={{ width: "100%", minWidth, borderCollapse: "collapse", fontSize: 12.5 }}>
+        <thead><tr>{head.map((h, i) => <th key={i} style={{ textAlign: "left", background: "var(--primary)", color: "white", padding: "9px 10px", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>
     </div>
   );
 }
-export const td = { padding: "7px 9px", borderBottom: "1px solid #EEE" };
+const TABLE_CSS = ".unia-table tbody tr:nth-child(even){background:#F7F9FC}.unia-table tbody tr:hover{background:#EAF2FB}.unia-table td{vertical-align:middle;line-height:1.45}.unia-table tbody tr{transition:background .12s}";
+export const td = { padding: "9px 10px", borderBottom: "1px solid #E8ECF2" };
 export function Banner({ children, tone = "info" }) {
   const tones = { info: [TEAL_LIGHT, TEAL], warn: ["#FBE4E1", RED] };
   const [bg, color] = tones[tone];

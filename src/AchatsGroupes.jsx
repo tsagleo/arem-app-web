@@ -780,30 +780,59 @@ function AchatCarte({ L, a, devise, lang, onOpen, maSous }) {
 }
 
 // ---------- Table des mouvements (avec actions de contrôle) ----------
-function TableMouvements({ L, t, lang, mouvements, devise, achatsParId, profile, isBureau, peutGerer, onAction, montrerAchat }) {
+// Pastille de couleur (statuts, types) — lisibilité des tableaux (2026-10-10).
+const MVT_COULEUR = { declare: [AMBER, "#FDF3E1"], recu: ["#1F5FA8", "#E3EEFA"], valide: [TEAL, TEAL_LIGHT], rejete: [RED, "#FBE4E1"] };
+function Pastille({ c, bg, children }) {
+  return <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color: c, background: bg, borderRadius: 999, padding: "2px 9px", whiteSpace: "nowrap" }}>{children}</span>;
+}
+
+function TableMouvements({ L, t, lang, mouvements: tous, devise, achatsParId, profile, isBureau, peutGerer, onAction, montrerAchat }) {
+  const [filtre, setFiltre] = useState("tous");
+  const aTraiter = (m) => m.statut === "declare" || m.statut === "recu";
+  const compte = { tous: tous.length, traiter: tous.filter(aTraiter).length, valide: tous.filter((m) => m.statut === "valide").length, rejete: tous.filter((m) => m.statut === "rejete").length };
+  // À traiter d'abord, puis les plus récents.
+  const mouvements = tous
+    .filter((m) => filtre === "tous" || (filtre === "traiter" ? aTraiter(m) : m.statut === filtre))
+    .sort((x, y) => (aTraiter(y) - aTraiter(x)) || String(y.declare_le || y.created_at).localeCompare(String(x.declare_le || x.created_at)));
+  const somme = (f) => r2(tous.filter(f).reduce((s, m) => s + (m.sens === "sortie" ? -1 : 1) * Number(m.montant || 0), 0));
   async function voirPreuve(m) {
     const { data, error } = await supabase.storage.from("interac-proofs").createSignedUrl(m.preuve_path, 120);
     if (error) { alert(errTxt(error, t)); return; }
     window.open(data.signedUrl, "_blank", "noopener");
   }
-  if (mouvements.length === 0) return <p style={{ color: MUTED, fontStyle: "italic", fontSize: 13 }}>{L.no_mvts}</p>;
+  if (tous.length === 0) return <p style={{ color: MUTED, fontStyle: "italic", fontSize: 13 }}>{L.no_mvts}</p>;
   const head = [L.col_date, ...(montrerAchat ? [L.col_purchase] : []), L.col_member, L.col_kind, L.col_mode, L.col_amount, L.col_status, L.col_received, L.col_validated, L.col_actions];
+  const puce = (on) => ({ fontSize: 12, fontWeight: 600, padding: "5px 12px", borderRadius: 999, cursor: "pointer", border: on ? "1px solid transparent" : "1px solid #DCE0E8", background: on ? "var(--primary)" : "white", color: on ? "white" : "#4A5468" });
   return (
+    <>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+      {[["tous", L.tb_all], ["traiter", L.tb_todo], ["valide", L.tb_valid], ["rejete", L.tb_rejected]].map(([k, lib]) => (
+        <button key={k} style={puce(filtre === k)} onClick={() => setFiltre(k)}>{lib} · {compte[k]}</button>
+      ))}
+      <span style={{ marginLeft: "auto", fontSize: 12.5, color: MUTED }}>
+        {L.tb_sum_valid} <b style={{ color: TEAL }}>{money(somme((m) => m.statut === "valide" && m.sens !== "avoir"), devise)}</b>
+        {compte.traiter > 0 && <> · {L.tb_sum_pending} <b style={{ color: AMBER }}>{money(somme((m) => aTraiter(m) && m.sens !== "avoir"), devise)}</b></>}
+      </span>
+    </div>
+    {mouvements.length === 0 ? <p style={{ color: MUTED, fontStyle: "italic", fontSize: 13 }}>{L.no_mvts}</p> : (
     <Table head={head} minWidth={900}>
       {mouvements.map((m) => {
         const a = achatsParId[m.achat_id];
         const gerer = peutGerer(a);
         return (
           <tr key={m.id}>
-            <td style={td}>{new Date(m.declare_le || m.created_at).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA")}</td>
+            <td style={{ ...td, whiteSpace: "nowrap" }}>{new Date(m.declare_le || m.created_at).toLocaleDateString(lang === "en" ? "en-CA" : "fr-CA")}
+              <div style={{ fontSize: 11, color: MUTED }}>{new Date(m.declare_le || m.created_at).toLocaleTimeString(lang === "en" ? "en-CA" : "fr-CA", { hour: "2-digit", minute: "2-digit" })}</div></td>
             {montrerAchat && <td style={td}>{a?.titre || "—"}</td>}
-            <td style={td}>{m.member_nom}</td>
-            <td style={td}>{L[`k_${m.sens}`]} <span style={{ color: MUTED }}>({L[`o_${m.objet}`]})</span>
-              {["complement", "remboursement"].includes(m.objet) && a && <div style={{ fontSize: 11.5, color: AMBER, marginTop: 2, maxWidth: 320 }}>{L.ec_titre} : {motifEcart(L, a, devise)}</div>}
+            <td style={{ ...td, fontWeight: 600 }}>{m.member_nom}</td>
+            <td style={td}>
+              <Pastille c={m.objet === "complement" ? AMBER : m.objet === "remboursement" ? RED : "#3B4A6B"} bg={m.objet === "complement" ? "#FDF3E1" : m.objet === "remboursement" ? "#FBE4E1" : "#EEF1F6"}>{L[`o_${m.objet}`]}</Pastille>
+              <div style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }}>{L[`k_${m.sens}`]}</div>
+              {["complement", "remboursement"].includes(m.objet) && a && <div style={{ fontSize: 11, color: AMBER, marginTop: 2, maxWidth: 280, lineHeight: 1.35 }}>{motifEcart(L, a, devise)}</div>}
             </td>
-            <td style={td}>{L[`mo_${m.mode}`] || m.mode}{m.reference ? ` · ${m.reference}` : ""}</td>
-            <td style={{ ...td, fontWeight: 700, color: m.sens === "entree" ? TEAL : m.sens === "sortie" ? RED : "inherit" }}>{money(m.montant, devise)}</td>
-            <td style={td}>{L[`ms_${m.statut}`]}{m.motif_rejet ? ` — ${m.motif_rejet}` : ""}</td>
+            <td style={td}>{L[`mo_${m.mode}`] || m.mode}{m.reference && <div title={m.reference} style={{ fontSize: 11, color: MUTED, maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.reference}</div>}</td>
+            <td style={{ ...td, fontWeight: 800, textAlign: "right", whiteSpace: "nowrap", color: m.sens === "entree" ? TEAL : m.sens === "sortie" ? RED : "inherit" }}>{m.sens === "sortie" ? "− " : ""}{money(m.montant, devise)}</td>
+            <td style={td}><Pastille c={(MVT_COULEUR[m.statut] || [MUTED])[0]} bg={(MVT_COULEUR[m.statut] || [MUTED, "#EEF0F3"])[1]}>{L[`ms_${m.statut}`]}</Pastille>{m.motif_rejet && <div style={{ fontSize: 11, color: RED, marginTop: 2 }}>{m.motif_rejet}</div>}</td>
             <td style={td}>{m.recu_par_nom || "—"}</td>
             <td style={td}>{m.valide_par_nom || "—"}</td>
             <td style={td}>
@@ -825,6 +854,8 @@ function TableMouvements({ L, t, lang, mouvements, devise, achatsParId, profile,
         );
       })}
     </Table>
+    )}
+    </>
   );
 }
 
@@ -1287,7 +1318,7 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                     <td style={td}>{money(l.du, devise)}</td>
                     <td style={td}>{money(l.paye, devise)}{l.attente > 0 && <span style={{ color: AMBER }}> (+{money(l.attente, devise)})</span>}</td>
                     <td style={{ ...td, fontWeight: 700, color: l.solde < 0 && r2(l.solde + l.attente) >= 0 ? AMBER : l.solde < 0 ? RED : l.solde > 0 ? AMBER : TEAL }}>{money(l.solde, devise)}{l.solde < 0 && r2(l.solde + l.attente) >= 0 && <div style={{ fontSize: 11, fontWeight: 600 }}>{L.attente_court}</div>}</td>
-                    <td style={td}>{L[`s_${s.statut}`]}</td>
+                    <td style={td}><Pastille c={s.statut === "retenu" ? TEAL : s.statut === "inscrit" ? "#1F5FA8" : MUTED} bg={s.statut === "retenu" ? TEAL_LIGHT : s.statut === "inscrit" ? "#E3EEFA" : "#EEF0F3"}>{L[`s_${s.statut}`]}</Pastille></td>
                     <td style={td}>{s.remis_le ? <>{fill(L.handed, { date: new Date(s.remis_le).toLocaleDateString("fr-CA") })}<br /><span style={{ fontSize: 11.5, color: s.remise_mode === "scan" ? TEAL : AMBER, fontWeight: 600 }}>{s.remise_mode === "procuration" ? fill(L.rm_mode_procuration, { nom: s.remis_a_nom || "" }) : s.remise_mode ? L["rm_mode_" + s.remise_mode] : ""}</span></> : "—"}</td>
                     <td style={td}>
                       <div style={ligneBtns}>
@@ -1316,6 +1347,18 @@ function AchatFiche({ L, t, lang, a, sous, mouvements, devise, profile, isBureau
                   </tr>
                 );
               })}
+              {sousActives.length > 1 && (() => {
+                const tot = sousActives.reduce((acc, s) => { const l = ligneSous(s); acc.dem += Number(s.quantite_demandee) || 0; acc.att += Number(s.quantite_attribuee) || 0; acc.du += l.du; acc.paye += l.paye; acc.solde += l.solde; return acc; }, { dem: 0, att: 0, du: 0, paye: 0, solde: 0 });
+                const st = { ...td, fontWeight: 800, background: "#EEF2F8", borderTop: "2px solid #C8D2E0" };
+                return (
+                  <tr>
+                    <td style={st}>{L.tb_total}</td><td style={st}>{fmtQ(tot.dem)}</td><td style={st}>{fmtQ(tot.att)}</td>
+                    <td style={st}>{money(r2(tot.du), devise)}</td><td style={st}>{money(r2(tot.paye), devise)}</td>
+                    <td style={{ ...st, color: r2(tot.solde) < 0 ? RED : TEAL }}>{money(r2(tot.solde), devise)}</td>
+                    <td style={st} colSpan={3}>{fill(L.tb_handed, { n: retenus.filter((x) => x.remis_le).length, t: retenus.length })}</td>
+                  </tr>
+                );
+              })()}
             </Table>
           )}
 
