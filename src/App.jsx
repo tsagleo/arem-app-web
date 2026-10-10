@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense, Children } from "react";
 import { createPortal } from "react-dom";
 import {
   Users, LayoutDashboard, HeartHandshake, FileBarChart, Plus, ShieldCheck,
@@ -529,8 +529,11 @@ function MonEspaceCard({ icon: Icon, label, paidLabel, dueLabel, percent, progre
     </div>
   );
 }
-function Field({ label, children }) {
-  return <div style={{ marginBottom: 14 }}><label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--primary)", marginBottom: 5 }}>{label}</label>{children}</div>;
+// Astérisque automatique sur les champs obligatoires (même règle que Field
+// dans shared.jsx) : dès que le champ direct porte `required`, ou <Field required>.
+function Field({ label, children, required }) {
+  const obligatoire = required ?? Children.toArray(children).some((c) => c?.props?.required);
+  return <div style={{ marginBottom: 14 }}><label style={{ display: "block", fontWeight: 600, fontSize: 13, color: "var(--primary)", marginBottom: 5 }}>{label}{obligatoire && <span aria-hidden="true" style={{ color: "#C0392B", marginLeft: 3 }}>*</span>}</label>{children}</div>;
 }
 const inputStyle = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1.5px solid #DCE0E8", fontSize: 14, fontFamily: "inherit", background: "white", boxSizing: "border-box" };
 // Écran de remplacement affiché à la place d'un volet Premium quand
